@@ -1,6 +1,8 @@
 import numpy as np
 
-def fit_line_segment(points):
+from src.sequence_segment import LineSegmentParams
+
+def fit_line_segment(points: np.ndarray) -> LineSegmentParams:
     if points.shape[0] < 2:
         raise ValueError("Need at least 2 points to fit a line.")
 
@@ -11,7 +13,7 @@ def fit_line_segment(points):
 
     # Handle degenerate case: all points identical
     if np.allclose(eigvals, 0):
-        return centroid, centroid, np.array([1, 0]), 0.0
+        return LineSegmentParams(start_point=centroid, end_point=centroid, direction = (1, 0), loss = 0.0)
 
     direction = eigvecs[:, np.argmax(eigvals)]
     direction /= np.linalg.norm(direction)
@@ -24,11 +26,12 @@ def fit_line_segment(points):
     N = points.shape[0]
     error = N * np.min(eigvals)
 
-    return p1, p2, direction, error
+    return LineSegmentParams(p1, p2, direction, error)
 
 if __name__ == '__main__':
     from timeit import default_timer as timer
     import matplotlib.pyplot as plt
+
     def visualize_edge_with_fit(edge_points, p1, p2, title):
         # Scatter plot of edge points
         plt.scatter(edge_points[:, 0], edge_points[:, 1], s=10, c='blue', label='Edge Points')
@@ -49,12 +52,12 @@ if __name__ == '__main__':
     def test_and_visualize(test_edge, diagram_title):
         test_edge = np.array(test_edge, dtype=int)
         start = timer()
-        p1, p2, direction, loss = fit_line_segment(test_edge)
+        segment_params = fit_line_segment(test_edge)
         end = timer()
-        print("test1:", end-start, 'seconds')
-        print("points count:", len(test_edge1))
-        print(p1, p2, "direction: ", direction, "loss:", loss)
-        visualize_edge_with_fit(test_edge, p1, p2, diagram_title)
+        print(diagram_title, end-start, 'seconds')
+        print("points count:", len(test_edge))
+        print(segment_params)
+        visualize_edge_with_fit(test_edge, segment_params.start_point, segment_params.end_point, diagram_title)
 
     test_and_visualize(test_edge1,"Test Edge 1 with Fitted Line")
     test_and_visualize(test_edge2, "Test Edge 2 with Fitted Line")
