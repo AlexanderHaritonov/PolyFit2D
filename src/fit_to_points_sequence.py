@@ -8,6 +8,7 @@ class FitterToPointsSequence:
                  points_sequence: np.ndarray,
                  is_closed = False,
                  max_segments_count = 30,
+                 max_adjust_iterations = 30,
                  tolerance = 2,
                  verbose = False):
         self.whole_sequence = points_sequence
@@ -43,7 +44,7 @@ class FitterToPointsSequence:
 
             segmentation_after_split = self.split_segment(segments, index_of_segment_to_split)
 
-            new_variance = adjust_segmentation(segmentation_after_split, self.tolerance)
+            new_variance = self.adjust_segmentation(segmentation_after_split, self.tolerance)
 
             if new_variance > variance - self.tolerance:
                 if self.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
@@ -61,7 +62,7 @@ class FitterToPointsSequence:
         else:
             return None
 
-    def split_segment(self, segments: list[SequenceSegment], segment_to_split_index) -> list[SequenceSegment]:
+    def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
         if segment.first_index < segment.last_index:
             pivot_point_index = (segment.first_index + segment.last_index) // 2
@@ -71,10 +72,10 @@ class FitterToPointsSequence:
             pivot_point_index = (segment.first_index + segment.last_index + len(self.whole_sequence)) // 2
             if pivot_point_index < len(self.whole_sequence):
                 part1 = self.whole_sequence[segment.first_index : pivot_point_index + 1]
-                part2 = self.whole_sequence[pivot_point_index + 1 :] + self.whole_sequence[pivot_point_index + 1 : segment.last_index + 1]
+                part2 = np.vstack([self.whole_sequence[pivot_point_index + 1 :], self.whole_sequence[: segment.last_index + 1]])
             else:
                 pivot_point_index -= len(self.whole_sequence)
-                part1 = self.whole_sequence[segment.first_index:] + self.whole_sequence[:pivot_point_index + 1]
+                part1 = np.vstack([self.whole_sequence[segment.first_index:], self.whole_sequence[:pivot_point_index + 1]])
                 part2 = self.whole_sequence[pivot_point_index + 1 : segment.last_index + 1]
 
         part1_fit: LineSegmentParams = fit_line_segment(part1)
@@ -95,9 +96,9 @@ class FitterToPointsSequence:
 
         return segments[:segment_to_split_index] + [segment1, segment2] + segments[segment_to_split_index+1:]
 
-def adjust_segmentation(points, segments, tolerance=2) -> float:
-    #TODO
-    pass
+    def adjust_segmentation(self, segments, start_segment) -> float:
+        #TODO
+        pass
 
 
 
