@@ -44,7 +44,7 @@ class FitterToPointsSequence:
 
             segmentation_after_split = self.split_segment(segments, index_of_segment_to_split)
 
-            new_variance = self.adjust_segmentation(segmentation_after_split, self.tolerance)
+            new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
 
             if new_variance > variance - self.tolerance:
                 if self.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
@@ -61,6 +61,23 @@ class FitterToPointsSequence:
             return max(eligible, key=lambda i: segments[i].line_segment_params.loss / point_counts[i])
         else:
             return None
+
+    ''' computes middle index / pivot point, while respecting the possibility for right_index<left_index because of closed sequence / circularity '''
+    def get_middle_index(self, left_index, right_index) -> int:
+        if left_index < right_index:
+            return (left_index + right_index) // 2
+        else:
+            mid_index = (left_index + right_index + len(self.whole_sequence)) // 2
+            if mid_index < len(self.whole_sequence):
+                return mid_index
+            else:
+                return mid_index - len(self.whole_sequence)
+
+    def subsequence(self, left, right) -> np.ndarray:
+        if left < right:
+            return self.whole_sequence[left:right+1]
+        else:
+            return np.vstack([ self.whole_sequence[left:], self.whole_sequence[:right+1] ])
 
     def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
@@ -99,6 +116,22 @@ class FitterToPointsSequence:
     def adjust_segmentation(self, segments, start_segment) -> float:
         #TODO
         pass
+
+    ''' :returns index where segment1 should end'''
+    def best_consecutive_segments_separation(self, segment1: SequenceSegment, segment2: SequenceSegment) -> int:
+        assert (segment1.last_index == segment2.first_index - 1) or (segment2.first_index==0 and segment1.last_index == len(self.whole_sequence))
+        left_limit = self.get_middle_index(segment1.first_index, segment1.last_index)
+        right_limit = self.get_middle_index(segment2.first_index, segment2.last_index)
+        relevant_points = self.subsequence(left_limit, right_limit)
+        assert relevant_points is not None and relevant_points.shape[0] >= 2
+        squared_errors_seg1 = segment1.line_segment_params.squared_distances_to_line(relevant_points)
+        squared_errors_seg2 = segment2.line_segment_params.squared_distances_to_line(relevant_points)
+        errors_cumsum1 = squared_errors_seg1.cumsum()
+        errors_cumsum2 = squared_errors_seg2[::-1].cumsum()
+        compound_error_sums = errors_cumsum1[:-1] + errors_cumsum2[-2::-1]
+        optimal_last_index = np.argmin(compound_error_sums) + 1
+        return int(optimal_last_index)
+
 
 
 
