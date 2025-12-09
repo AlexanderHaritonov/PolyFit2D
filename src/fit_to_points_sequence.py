@@ -8,12 +8,13 @@ class FitterToPointsSequence:
                  points_sequence: np.ndarray,
                  is_closed = False,
                  max_segments_count = 30,
-                 max_adjust_iterations = 30,
+                 max_adjust_iterations = 20,
                  tolerance = 2,
                  verbose = False):
         self.whole_sequence = points_sequence
         self.is_closed = is_closed
         self.max_segments_count = max_segments_count
+        self.max_adjust_iterations = max_adjust_iterations
         self.tolerance = tolerance
         self.verbose = verbose
 
@@ -113,9 +114,49 @@ class FitterToPointsSequence:
 
         return segments[:segment_to_split_index] + [segment1, segment2] + segments[segment_to_split_index+1:]
 
-    def adjust_segmentation(self, segments, start_segment) -> float:
-        #TODO
-        pass
+    def adjust_segmentation(self, segments: list[SequenceSegment], start_segment_index:int) -> float:
+        variance = 0
+        for iterations_count in range(self.max_adjust_iterations):
+            # The start segment is typically the 1st segment of the pair resulting from the split.
+            # Then we do iterations of following (at most MAX_ITERATIONS)
+            # we go in the direction of increasing index and for each segment:
+            #   1. find out where the border to the next consecutive segment should be
+            #   2. adjust where the previous segment ends and the next segment starts
+            #   3. re-fit both the current and the next segment
+            # when we start again at start_segment_index - 1 and do a pass in the direction of decreasing index,
+            # doing steps 1.2.3. for each segment
+            changes_count = 0
+            for direction in [1, -1]:
+                start = start_segment_index if direction == 1 else start_segment_index -1
+                if start == -1:
+                    start = len(segments) - 1
+                stop = len(segments) - 1 if direction == 1 else -1
+                for i in range(start, stop, direction):
+                    optimal_last_index = self.best_consecutive_segments_separation(segments[i], segments[i+1])
+                    if optimal_last_index == segments[i].last_index:
+                        break
+                    if abs(optimal_last_index - segments[i].last_index) >= 2:
+                        changes_count += 1
+                    segments[i].last_index = optimal_last_index
+                    segments[i+1].first_index = optimal_last_index + 1
+                    segments[i].line_segment_params = fit_line_segment(self.subsequence(segments[i].first_index, segments[i].last_index))
+                    # segments[i+1].line_segment_params = fit_line_segment(self.subsequence(segments[i+1].first_index, segments[i+1].last_index))
+
+            variance = sum(s.line_segment_params.loss for s in segments) / len(segments)
+            if variance < self.tolerance:
+                if self.verbose:
+                    print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than tolerance. Breaking up")
+                return variance
+
+            if changes_count == 0:
+                if self.verbose:
+                    print(f"at {len(segments)} segments, {iterations_count} iterations were no changes. Breaking up")
+                return variance
+
+        if self.verbose:
+            print(f"at {len(segments)} segments, adjust_segmentation reached {self.max_adjust_iterations} iterations.")
+        return variance
+
 
     ''' :returns index where segment1 should end'''
     def best_consecutive_segments_separation(self, segment1: SequenceSegment, segment2: SequenceSegment) -> int:
