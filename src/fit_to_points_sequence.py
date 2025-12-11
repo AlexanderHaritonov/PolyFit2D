@@ -80,6 +80,12 @@ class FitterToPointsSequence:
         else:
             return np.vstack([ self.whole_sequence[left:], self.whole_sequence[:right+1] ])
 
+    def points_count(self, first_index, last_index) -> int:
+        if last_index > first_index:
+            return last_index - first_index + 1
+        else:
+            return len(self.whole_sequence) - first_index + last_index + 1 # for closed polygon / circular case
+
     def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
         if segment.first_index < segment.last_index:
@@ -110,21 +116,42 @@ class FitterToPointsSequence:
             whole_sequence= self.whole_sequence,
             first_index= seg2_first_index,
             last_index= segment.last_index,
-            line_segment_params=part1_fit)
+            line_segment_params=part2_fit)
 
         return segments[:segment_to_split_index] + [segment1, segment2] + segments[segment_to_split_index+1:]
 
     def adjust_segmentation(self, segments: list[SequenceSegment], start_segment_index:int) -> float:
-        variance = 0
+        avg_variance = 0
         for iterations_count in range(self.max_adjust_iterations):
             # The start segment is typically the 1st segment of the pair resulting from the split.
             # Then we do iterations of following (at most MAX_ITERATIONS)
             # we go in the direction of increasing index and for each segment:
             #   1. find out where the border to the next consecutive segment should be
             #   2. adjust where the previous segment ends and the next segment starts
-            #   3. re-fit both the current and the next segment
+            #   3. re-fit the current segment. Probably can skip re-fitting the next segment as it will be done in the next step anyway
             # when we start again at start_segment_index - 1 and do a pass in the direction of decreasing index,
             # doing steps 1.2.3. for each segment
+
+            def find_adjust_refit(previous_segment, next_segment)->int:
+                optimal_last_index = self.best_consecutive_segments_separation(previous_segment, next_segment)
+                if optimal_last_index > previous_segment.first_index:
+                    count_of_points_changing_segment = abs(optimal_last_index - previous_segment.last_index)
+                else: # this might happen with closed polygons
+                    old_points_count = previous_segment.points_count()
+                    new_points_count = self.points_count(previous_segment.first_index, optimal_last_index)
+                    count_of_points_changing_segment = abs(new_points_count - old_points_count)
+
+                if count_of_points_changing_segment > 0:
+                    previous_segment.last_index = optimal_last_index
+                    next_segment.first_index = (optimal_last_index + 1) % len(self.whole_sequence)
+
+                previous_segment.line_segment_params = fit_line_segment(
+                    self.subsequence(previous_segment.first_index, previous_segment.last_index))
+                # TODO: consider doing
+                # next_segment.line_segment_params = fit_line_segment(self.subsequence(next_segment.first_index, next_segment.last_index))
+
+                return count_of_points_changing_segment
+
             changes_count = 0
             for direction in [1, -1]:
                 start = start_segment_index if direction == 1 else start_segment_index -1
@@ -132,35 +159,35 @@ class FitterToPointsSequence:
                     start = len(segments) - 1
                 stop = len(segments) - 1 if direction == 1 else -1
                 for i in range(start, stop, direction):
-                    optimal_last_index = self.best_consecutive_segments_separation(segments[i], segments[i+1])
-                    if optimal_last_index == segments[i].last_index:
-                        break
-                    if abs(optimal_last_index - segments[i].last_index) >= 2:
+                    previous_segment, next_segment = segments[i], segments[i+1]
+                    count_of_points_changing_segment = find_adjust_refit(previous_segment, next_segment)
+                    if count_of_points_changing_segment > 1:
                         changes_count += 1
-                    segments[i].last_index = optimal_last_index
-                    segments[i+1].first_index = optimal_last_index + 1
-                    segments[i].line_segment_params = fit_line_segment(self.subsequence(segments[i].first_index, segments[i].last_index))
-                    # segments[i+1].line_segment_params = fit_line_segment(self.subsequence(segments[i+1].first_index, segments[i+1].last_index))
 
-            variance = sum(s.line_segment_params.loss for s in segments) / len(segments)
-            if variance < self.tolerance:
+                if self.is_closed and direction == 1:
+                    count_of_points_changing_segment = find_adjust_refit(segments[-1], segments[0])
+                    if count_of_points_changing_segment > 1:
+                        changes_count += 1
+
+            avg_variance = sum(s.line_segment_params.loss for s in segments) / len(segments)
+            if avg_variance < self.tolerance:
                 if self.verbose:
-                    print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than tolerance. Breaking up")
-                return variance
+                    print(f"at {len(segments)} segments, {iterations_count} iterations avg_variance smaller than tolerance. Breaking up")
+                return avg_variance
 
             if changes_count == 0:
                 if self.verbose:
                     print(f"at {len(segments)} segments, {iterations_count} iterations were no changes. Breaking up")
-                return variance
+                return avg_variance
 
         if self.verbose:
             print(f"at {len(segments)} segments, adjust_segmentation reached {self.max_adjust_iterations} iterations.")
-        return variance
+        return avg_variance
 
 
     ''' :returns index where segment1 should end'''
     def best_consecutive_segments_separation(self, segment1: SequenceSegment, segment2: SequenceSegment) -> int:
-        assert (segment1.last_index == segment2.first_index - 1) or (segment2.first_index==0 and segment1.last_index == len(self.whole_sequence))
+        assert (segment1.last_index == segment2.first_index - 1) or (segment2.first_index==0 and segment1.last_index == len(self.whole_sequence) - 1)
         left_limit = self.get_middle_index(segment1.first_index, segment1.last_index)
         right_limit = self.get_middle_index(segment2.first_index, segment2.last_index)
         relevant_points = self.subsequence(left_limit, right_limit)
@@ -170,8 +197,8 @@ class FitterToPointsSequence:
         errors_cumsum1 = squared_errors_seg1.cumsum()
         errors_cumsum2 = squared_errors_seg2[::-1].cumsum()
         compound_error_sums = errors_cumsum1[:-1] + errors_cumsum2[-2::-1]
-        optimal_last_index = np.argmin(compound_error_sums) + 1
-        return int(optimal_last_index) + left_limit
+        optimal_last_index = np.argmin(compound_error_sums) + 1 # counting from left_limit
+        return (int(optimal_last_index) + left_limit) % len(self.whole_sequence)
 
 
 
