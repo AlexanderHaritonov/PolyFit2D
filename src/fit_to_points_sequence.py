@@ -11,7 +11,12 @@ class FitterToPointsSequence:
                  max_adjust_iterations = 20,
                  tolerance = 2,
                  verbose = False):
-        self.whole_sequence = points_sequence
+
+        # If closed contour and last point equals first point, remove the duplicate
+        if is_closed and np.array_equal(points_sequence[0], points_sequence[-1]):
+            self.whole_sequence = points_sequence[:-1]
+        else:
+            self.whole_sequence = points_sequence
         self.is_closed = is_closed
         self.max_segments_count = max_segments_count
         self.max_adjust_iterations = max_adjust_iterations
@@ -42,10 +47,13 @@ class FitterToPointsSequence:
             if index_of_segment_to_split is None:
                 if self.verbose: print("No segments to split. Breaking up at", len(segments), "segments.")
                 return segments
+            if self.verbose:
+                print(f"splitting at {index_of_segment_to_split}")
 
             segmentation_after_split = self.split_segment(segments, index_of_segment_to_split)
 
             new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
+            if self.verbose: print(f"average variance: {new_variance}")
 
             if new_variance > variance - self.tolerance:
                 if self.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
@@ -154,10 +162,11 @@ class FitterToPointsSequence:
 
             changes_count = 0
             for direction in [1, -1]:
-                start = start_segment_index if direction == 1 else start_segment_index -1
+                start = start_segment_index if direction == 1 else start_segment_index - 1
                 if start == -1:
-                    start = len(segments) - 1
-                stop = len(segments) - 1 if direction == 1 else -1
+                    start = len(segments) - 2
+                stop = len(segments) - 2 if direction == 1 else -1
+                #if self.verbose: print(f"adjust_segmentation looping: len:{len(segments)}, start: {start}, stop: {stop}, direction: {direction}")
                 for i in range(start, stop, direction):
                     previous_segment, next_segment = segments[i], segments[i+1]
                     count_of_points_changing_segment = find_adjust_refit(previous_segment, next_segment)
@@ -197,7 +206,7 @@ class FitterToPointsSequence:
         errors_cumsum1 = squared_errors_seg1.cumsum()
         errors_cumsum2 = squared_errors_seg2[::-1].cumsum()
         compound_error_sums = errors_cumsum1[:-1] + errors_cumsum2[-2::-1]
-        optimal_last_index = np.argmin(compound_error_sums) + 1 # counting from left_limit
+        optimal_last_index = np.argmin(compound_error_sums) # counting from left_limit
         return (int(optimal_last_index) + left_limit) % len(self.whole_sequence)
 
 
