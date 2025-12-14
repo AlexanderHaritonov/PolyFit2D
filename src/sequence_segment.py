@@ -3,7 +3,7 @@ from numpy.typing import NDArray
 from dataclasses import dataclass
 from typing import Optional
 
-@dataclass
+@dataclass(frozen=True)
 class LineSegmentParams:
     start_point: NDArray[np.float64]
     end_point: NDArray[np.float64]
@@ -34,5 +34,14 @@ class SequenceSegment:
             return self.last_index - self.first_index + 1
         else:
             return len(self.whole_sequence) - self.first_index + self.last_index + 1 # for closed polygon / circular case
+
+    def clone(self) -> 'SequenceSegment':
+        """Create a copy of this segment (whole_sequence is shared, line_segment_params is immutable)"""
+        return SequenceSegment(
+            whole_sequence=self.whole_sequence,  # shared reference, not copied
+            first_index=self.first_index,
+            last_index=self.last_index,
+            line_segment_params=self.line_segment_params  # immutable, safe to share
+        )
 
 

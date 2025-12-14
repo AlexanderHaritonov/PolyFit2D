@@ -53,7 +53,11 @@ class FitterToPointsSequence:
             segmentation_after_split = self.split_segment(segments, index_of_segment_to_split)
 
             new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
-            if self.verbose: print(f"average variance: {new_variance}")
+            if self.verbose: print(f"variance: {new_variance}")
+
+            if new_variance < self.tolerance:
+                if self.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than tolerance.")
+                return segmentation_after_split
 
             if new_variance > variance - self.tolerance:
                 if self.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
@@ -126,10 +130,13 @@ class FitterToPointsSequence:
             last_index= segment.last_index,
             line_segment_params=part2_fit)
 
-        return segments[:segment_to_split_index] + [segment1, segment2] + segments[segment_to_split_index+1:]
+        # Clone segments before and after the split point
+        cloned_before = [seg.clone() for seg in segments[:segment_to_split_index]]
+        cloned_after = [seg.clone() for seg in segments[segment_to_split_index+1:]]
+        return cloned_before + [segment1, segment2] + cloned_after
 
     def adjust_segmentation(self, segments: list[SequenceSegment], start_segment_index:int) -> float:
-        avg_variance = 0
+        variance = 0
         for iterations_count in range(self.max_adjust_iterations):
             # The start segment is typically the 1st segment of the pair resulting from the split.
             # Then we do iterations of following (at most MAX_ITERATIONS)
@@ -178,20 +185,20 @@ class FitterToPointsSequence:
                     if count_of_points_changing_segment > 1:
                         changes_count += 1
 
-            avg_variance = sum(s.line_segment_params.loss for s in segments) / len(segments)
-            if avg_variance < self.tolerance:
+            variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
+            if variance < self.tolerance:
                 if self.verbose:
-                    print(f"at {len(segments)} segments, {iterations_count} iterations avg_variance smaller than tolerance. Breaking up")
-                return avg_variance
+                    print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than tolerance. Breaking up")
+                return variance
 
             if changes_count == 0:
                 if self.verbose:
                     print(f"at {len(segments)} segments, {iterations_count} iterations were no changes. Breaking up")
-                return avg_variance
+                return variance
 
         if self.verbose:
             print(f"at {len(segments)} segments, adjust_segmentation reached {self.max_adjust_iterations} iterations.")
-        return avg_variance
+        return variance
 
 
     ''' :returns index where segment1 should end'''
