@@ -3,6 +3,8 @@ import numpy as np
 from src.fit_line_segment import fit_line_segment
 from src.sequence_segment import SequenceSegment, LineSegmentParams
 
+PLOT_SEGMENTS = True
+
 class FitterToPointsSequence:
     def __init__(self,
                  points_sequence: np.ndarray,
@@ -54,6 +56,9 @@ class FitterToPointsSequence:
 
             new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
             if self.verbose: print(f"variance: {new_variance}")
+            if self.verbose and PLOT_SEGMENTS:
+                from src.sequence_segment import plot_segments
+                plot_segments(segmentation_after_split)
 
             if new_variance < self.tolerance:
                 if self.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than tolerance.")
@@ -168,22 +173,18 @@ class FitterToPointsSequence:
                 return count_of_points_changing_segment
 
             changes_count = 0
-            for direction in [1, -1]:
-                start = start_segment_index if direction == 1 else start_segment_index - 1
-                if start == -1:
-                    start = len(segments) - 2
-                stop = len(segments) - 2 if direction == 1 else -1
-                #if self.verbose: print(f"adjust_segmentation looping: len:{len(segments)}, start: {start}, stop: {stop}, direction: {direction}")
-                for i in range(start, stop, direction):
-                    previous_segment, next_segment = segments[i], segments[i+1]
-                    count_of_points_changing_segment = find_adjust_refit(previous_segment, next_segment)
-                    if count_of_points_changing_segment > 1:
-                        changes_count += 1
 
-                if self.is_closed and direction == 1:
-                    count_of_points_changing_segment = find_adjust_refit(segments[-1], segments[0])
-                    if count_of_points_changing_segment > 1:
-                        changes_count += 1
+            for i in range(start_segment_index, len(segments) - 2):
+                count_of_points_changing_segment = find_adjust_refit(segments[i], segments[i+1])
+                if count_of_points_changing_segment > 0: changes_count += 1
+
+            reverse_run_start = start_segment_index - 1 if start_segment_index > 0 else len(segments) - 2
+            for i in range(reverse_run_start, -1, -1):
+                count_of_points_changing_segment = find_adjust_refit(segments[i], segments[i+1])
+                if count_of_points_changing_segment > 0: changes_count += 1
+
+            count_of_points_changing_segment = find_adjust_refit(segments[-1], segments[0])
+            if count_of_points_changing_segment > 0: changes_count += 1
 
             variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
             if variance < self.tolerance:

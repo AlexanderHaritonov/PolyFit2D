@@ -1,6 +1,7 @@
 import numpy as np
 from skimage import measure
 import matplotlib.pyplot as plt
+import time
 
 from src.fit_to_points_sequence import FitterToPointsSequence
 
@@ -60,7 +61,7 @@ def show_contour(bitmap, contour):
 
 
 # Step 5: Fit polygon using FitterToPointsSequence
-def fit_polygon(contour, is_closed=True, max_segments=15, tolerance=2.0, verbose=True):
+def fit_polygon(contour, verbose = True):
     """
     Fit line segments to contour using FitterToPointsSequence.
 
@@ -74,20 +75,27 @@ def fit_polygon(contour, is_closed=True, max_segments=15, tolerance=2.0, verbose
     Returns:
         List of SequenceSegment objects
     """
-    # Create fitter instance
+    # Create fitter instance and measure fitting time
+    start_time = time.perf_counter()
+
     fitter = FitterToPointsSequence(
         points_sequence=contour,
-        is_closed=is_closed,
-        max_segments_count=max_segments,
+        is_closed=True,
+        max_segments_count=15,
         max_adjust_iterations=20,
-        tolerance=tolerance,
+        tolerance=3,
         verbose=verbose
+        #verbose=False
     )
 
     # Fit line segments to the contour
     segments = fitter.fit_to_points_sequence()
 
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+
     print(f"\nFitted {len(segments)} segments to the contour")
+    print(f"Fitting time: {elapsed_time*1000:.2f} ms ({elapsed_time:.4f} seconds)")
     return segments
 
 
@@ -114,7 +122,7 @@ def show_fitted_polygon(bitmap, contour, segments):
         # Plot segment points and line
         plt.plot(segment_points[:, 1], segment_points[:, 0], 'o-',
                 color=colors[i], linewidth=2.5, markersize=5,
-                label=f'Seg {i+1} ({segment.points_count()} pts)')
+                label=f'Seg {i} ({segment.points_count()} pts)')
 
     plt.title(f'Step 3: FitterToPointsSequence Result ({len(segments)} segments)',
               fontsize=14, fontweight='bold')
@@ -156,13 +164,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("STEP 5: Fitting polygon with FitterToPointsSequence")
     print("=" * 60)
-    segments = fit_polygon(
-        contour,
-        is_closed=True,
-        max_segments=15,
-        tolerance=2.0,
-        verbose=True
-    )
+    segments = fit_polygon(contour)
 
     # Print segment information
     print("\n" + "=" * 60)
