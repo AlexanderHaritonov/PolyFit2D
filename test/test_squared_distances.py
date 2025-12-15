@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from src.sequence_segment import LineSegmentParams
+from src.line_segment_params import LineSegmentParams
 
 class TestSquaredDistancesToLine:
 

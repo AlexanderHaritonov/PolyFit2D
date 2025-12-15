@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.sequence_segment import LineSegmentParams
+from src.line_segment_params import LineSegmentParams
 
 def fit_line_segment(points: np.ndarray) -> LineSegmentParams:
     if points.shape[0] < 2:

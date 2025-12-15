@@ -1,7 +1,8 @@
 import numpy as np
 
 from src.fit_line_segment import fit_line_segment
-from src.sequence_segment import SequenceSegment, LineSegmentParams
+from src.line_segment_params import LineSegmentParams
+from src.sequence_segment import SequenceSegment, subsequence
 
 PLOT_SEGMENTS = True
 
@@ -92,10 +93,7 @@ class FitterToPointsSequence:
                 return mid_index - len(self.whole_sequence)
 
     def subsequence(self, left, right) -> np.ndarray:
-        if left < right:
-            return self.whole_sequence[left:right+1]
-        else:
-            return np.vstack([ self.whole_sequence[left:], self.whole_sequence[:right+1] ])
+        return subsequence(self.whole_sequence, left, right)
 
     def points_count(self, first_index, last_index) -> int:
         if last_index > first_index:
@@ -165,10 +163,8 @@ class FitterToPointsSequence:
                     previous_segment.last_index = optimal_last_index
                     next_segment.first_index = (optimal_last_index + 1) % len(self.whole_sequence)
 
-                previous_segment.line_segment_params = fit_line_segment(
-                    self.subsequence(previous_segment.first_index, previous_segment.last_index))
-                # TODO: consider doing
-                # next_segment.line_segment_params = fit_line_segment(self.subsequence(next_segment.first_index, next_segment.last_index))
+                previous_segment.refit()
+                next_segment.refit()
 
                 return count_of_points_changing_segment
 

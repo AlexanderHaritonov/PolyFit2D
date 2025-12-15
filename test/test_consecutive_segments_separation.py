@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from src.sequence_segment import SequenceSegment, LineSegmentParams
+from src.line_segment_params import LineSegmentParams
+from src.sequence_segment import SequenceSegment
 from src.fit_to_points_sequence import FitterToPointsSequence
 
 
