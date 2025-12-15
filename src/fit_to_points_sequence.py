@@ -26,7 +26,7 @@ class FitterToPointsSequence:
         self.tolerance = tolerance
         self.verbose = verbose
 
-    def fit_to_points_sequence(self) -> list[SequenceSegment]:
+    def fit(self) -> list[SequenceSegment]:
         segment_params: LineSegmentParams = fit_line_segment(self.whole_sequence)
         initial_segment = SequenceSegment(
             whole_sequence=self.whole_sequence,
@@ -147,11 +147,9 @@ class FitterToPointsSequence:
             # we go in the direction of increasing index and for each segment:
             #   1. find out where the border to the next consecutive segment should be
             #   2. adjust where the previous segment ends and the next segment starts
-            #   3. re-fit the current segment. Probably can skip re-fitting the next segment as it will be done in the next step anyway
-            # when we start again at start_segment_index - 1 and do a pass in the direction of decreasing index,
-            # doing steps 1.2.3. for each segment
+            #   3. re-fit the current segment.
 
-            def find_adjust_refit(previous_segment, next_segment)->int:
+            def find_optimal_break_and_adjust(previous_segment, next_segment)->int:
                 optimal_last_index = self.best_consecutive_segments_separation(previous_segment, next_segment)
                 if optimal_last_index > previous_segment.first_index:
                     count_of_points_changing_segment = abs(optimal_last_index - previous_segment.last_index)
@@ -164,24 +162,31 @@ class FitterToPointsSequence:
                     previous_segment.last_index = optimal_last_index
                     next_segment.first_index = (optimal_last_index + 1) % len(self.whole_sequence)
 
-                previous_segment.refit()
-                next_segment.refit()
-
                 return count_of_points_changing_segment
 
             changes_count = 0
 
             for i in range(start_segment_index, len(segments) - 2):
-                count_of_points_changing_segment = find_adjust_refit(segments[i], segments[i+1])
-                if count_of_points_changing_segment > 0: changes_count += 1
+                count_of_points_changing_segment = find_optimal_break_and_adjust(segments[i], segments[i+1])
+                if count_of_points_changing_segment > 1:
+                    changes_count += 1
+                segments[i+1].refit()
+            segments[start_segment_index].refit()
 
             reverse_run_start = start_segment_index - 1 if start_segment_index > 0 else len(segments) - 2
             for i in range(reverse_run_start, -1, -1):
-                count_of_points_changing_segment = find_adjust_refit(segments[i], segments[i+1])
-                if count_of_points_changing_segment > 0: changes_count += 1
+                count_of_points_changing_segment = find_optimal_break_and_adjust(segments[i], segments[i+1])
+                if count_of_points_changing_segment > 1:
+                    changes_count += 1
+                segments[i+1].refit()
+            segments[0].refit()
 
-            count_of_points_changing_segment = find_adjust_refit(segments[-1], segments[0])
-            if count_of_points_changing_segment > 0: changes_count += 1
+            if self.is_closed:
+                count_of_points_changing_segment = find_optimal_break_and_adjust(segments[-1], segments[0])
+                if count_of_points_changing_segment > 1:
+                    changes_count += 1
+                segments[-1].refit()
+                segments[0].refit()
 
             variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
             if variance < self.tolerance:

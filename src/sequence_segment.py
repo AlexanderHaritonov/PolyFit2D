@@ -38,6 +38,24 @@ def subsequence(sequence: np.ndarray, left, right) -> np.ndarray:
     else:
         return np.vstack([ sequence[left:], sequence[:right+1] ])
 
+def print_segments_info(segments):
+    print("\n" + "=" * 60)
+    print("Segment Details:")
+    print("=" * 60)
+    for i, segment in enumerate(segments):
+        params = segment.line_segment_params
+        print(f"\nSegment {i+1}:")
+        print(f"  Points: {segment.first_index} to {segment.last_index} ({segment.points_count()} points)")
+        print(f"  Loss: {params.loss:.4f}")
+        print(f"  Start point: [{params.start_point[0]:.2f}, {params.start_point[1]:.2f}]")
+        print(f"  End point: [{params.end_point[0]:.2f}, {params.end_point[1]:.2f}]")
+        print(f"  Direction: [{params.direction[0]:.4f}, {params.direction[1]:.4f}]")
+
+    # Step 6: Show fitted polygon
+    print("\n" + "=" * 60)
+    print("STEP 6: Showing fitted polygon")
+    print("=" * 60)
+
 def plot_segments(segments: list[SequenceSegment]) -> None:
     """Display only the fitted line segments without bitmap or contour"""
     plt.figure(figsize=(10, 8))

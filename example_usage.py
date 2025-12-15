@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import time
 
 from src.fit_to_points_sequence import FitterToPointsSequence
+from src.sequence_segment import print_segments_info
+
 
 # Step 1: Create a simple test bitmap (or load your own image)
 def create_sample_bitmap():
@@ -89,7 +91,7 @@ def fit_polygon(contour, verbose = True):
     )
 
     # Fit line segments to the contour
-    segments = fitter.fit_to_points_sequence()
+    segments = fitter.fit()
 
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time
@@ -166,23 +168,7 @@ if __name__ == "__main__":
     print("=" * 60)
     segments = fit_polygon(contour)
 
-    # Print segment information
-    print("\n" + "=" * 60)
-    print("Segment Details:")
-    print("=" * 60)
-    for i, segment in enumerate(segments):
-        params = segment.line_segment_params
-        print(f"\nSegment {i+1}:")
-        print(f"  Points: {segment.first_index} to {segment.last_index} ({segment.points_count()} points)")
-        print(f"  Loss: {params.loss:.4f}")
-        print(f"  Start point: [{params.start_point[0]:.2f}, {params.start_point[1]:.2f}]")
-        print(f"  End point: [{params.end_point[0]:.2f}, {params.end_point[1]:.2f}]")
-        print(f"  Direction: [{params.direction[0]:.4f}, {params.direction[1]:.4f}]")
-
-    # Step 6: Show fitted polygon
-    print("\n" + "=" * 60)
-    print("STEP 6: Showing fitted polygon")
-    print("=" * 60)
+    print_segments_info(segments)
     show_fitted_polygon(bitmap, contour, segments)
 
     print("\n" + "=" * 60)

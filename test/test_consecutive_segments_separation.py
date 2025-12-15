@@ -35,6 +35,34 @@ def test_horizontal_then_vertical():
     # Expect separation near the end of horizontal (index 3)
     assert idx == 3
 
+def test_horizontal_then_vertical_with_step():
+    points = np.array([
+        [0,0], [1,0], [2,0], [3,0],   # horizontal
+        [4,1], [4,2], [4,3], [4,4]    # vertical
+    ], dtype=np.float64)
+
+    seg1_params = LineSegmentParams(
+        start_point=np.array([0.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 0.0], dtype=np.float64),
+        direction=np.array([1.0, 0.0], dtype=np.float64),
+        loss=0.0
+    )
+    seg1 = SequenceSegment(points, 0, 3, seg1_params)
+
+    seg2_params = LineSegmentParams(
+        start_point=np.array([4.0, 0.0], dtype=np.float64),
+        end_point=np.array([4.0, 4.0], dtype=np.float64),
+        direction=np.array([0.0, 1.0], dtype=np.float64),
+        loss=0.0
+    )
+    seg2 = SequenceSegment(points, 4, 7, seg2_params)
+
+    fitter = FitterToPointsSequence(points)
+    idx = fitter.best_consecutive_segments_separation(seg1, seg2)
+
+    # Expect separation near the end of horizontal (index 3)
+    assert idx == 3
+
 
 def test_diagonal_then_horizontal():
     points = np.array([
