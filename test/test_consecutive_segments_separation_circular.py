@@ -5,14 +5,14 @@ from src.sequence_segment import SequenceSegment
 from src.fit_to_points_sequence import FitterToPointsSequence
 
 def make_line_segment(whole_sequence: np.ndarray, i_start: int, i_end: int) -> LineSegmentParams:
-    start = whole_sequence[i_start]
-    end = whole_sequence[i_end]
-    direction = end - start
+    start = whole_sequence[i_start].astype(np.float64)
+    end = whole_sequence[i_end].astype(np.float64)
+    direction = (end - start).astype(np.float64)
     norm = np.linalg.norm(direction)
     if norm == 0:
         direction = np.array([1.0, 0.0], dtype=np.float64)
     else:
-        direction = direction / norm
+        direction = (direction / norm).astype(np.float64)
     return LineSegmentParams(start_point=start, end_point=end, direction=direction, loss=0.0)
 
 @pytest.fixture

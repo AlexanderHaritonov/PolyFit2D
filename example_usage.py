@@ -83,9 +83,9 @@ def fit_polygon(contour, verbose = True):
         is_closed=True,
         max_segments_count=15,
         max_adjust_iterations=20,
-        tolerance=3,
-        verbose=verbose
-        #verbose=False
+        tolerance=0.2,
+        #verbose=verbose
+        verbose=False
     )
 
     # Fit line segments to the contour

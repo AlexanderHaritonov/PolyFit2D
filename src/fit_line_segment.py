@@ -6,19 +6,26 @@ def fit_line_segment(points: np.ndarray) -> LineSegmentParams:
     if points.shape[0] < 2:
         raise ValueError("Need at least 2 points to fit a line.")
 
-    centroid = points.mean(axis=0)
-    cov = np.cov(points - centroid, rowvar=False)
+    # Ensure float64 computations without copying large points array
+    centroid = np.asarray(points.mean(axis=0), dtype=np.float64)
+    diffs = points - centroid
+    cov = np.cov(diffs, rowvar=False)
 
     eigvals, eigvecs = np.linalg.eigh(cov)
 
     # Handle degenerate case: all points identical
     if np.allclose(eigvals, 0):
-        return LineSegmentParams(start_point=centroid, end_point=centroid, direction = (1, 0), loss = 0.0)
+        return LineSegmentParams(
+            start_point=centroid,
+            end_point=centroid,
+            direction=np.array([1.0, 0.0], dtype=np.float64),
+            loss=0.0
+        )
 
     direction = eigvecs[:, np.argmax(eigvals)]
     direction /= np.linalg.norm(direction)
 
-    projections = (points - centroid) @ direction
+    projections = diffs @ direction
     p1 = centroid + projections.min() * direction
     p2 = centroid + projections.max() * direction
 

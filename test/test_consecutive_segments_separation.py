@@ -11,20 +11,20 @@ def test_horizontal_then_vertical():
     points = np.array([
         [0,0], [1,0], [2,0], [3,0],   # horizontal
         [3,1], [3,2], [3,3], [3,4]    # vertical
-    ])
+    ], dtype=np.float64)
 
     seg1_params = LineSegmentParams(
-        start_point=np.array([0,0]),
-        end_point=np.array([3,0]),
-        direction=np.array([1,0]),
+        start_point=np.array([0.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 0.0], dtype=np.float64),
+        direction=np.array([1.0, 0.0], dtype=np.float64),
         loss=0.0
     )
     seg1 = SequenceSegment(points, 0, 3, seg1_params)
 
     seg2_params = LineSegmentParams(
-        start_point=np.array([3,0]),
-        end_point=np.array([3,4]),
-        direction=np.array([0,1]),
+        start_point=np.array([3.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 4.0], dtype=np.float64),
+        direction=np.array([0.0, 1.0], dtype=np.float64),
         loss=0.0
     )
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
@@ -40,20 +40,20 @@ def test_diagonal_then_horizontal():
     points = np.array([
         [0,0], [1,1], [2,2], [3,3],   # diagonal
         [4,3], [5,3], [6,3], [7,3]    # horizontal
-    ])
+    ], dtype=np.float64)
 
     seg1_params = LineSegmentParams(
-        start_point=np.array([0,0]),
-        end_point=np.array([3,3]),
-        direction=np.array([1/np.sqrt(2), 1/np.sqrt(2)]),
+        start_point=np.array([0.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 3.0], dtype=np.float64),
+        direction=np.array([1.0/np.sqrt(2.0), 1.0/np.sqrt(2.0)], dtype=np.float64),
         loss=0.0
     )
     seg1 = SequenceSegment(points, 0, 3, seg1_params)
 
     seg2_params = LineSegmentParams(
-        start_point=np.array([3,3]),
-        end_point=np.array([7,3]),
-        direction=np.array([1,0]),
+        start_point=np.array([3.0, 3.0], dtype=np.float64),
+        end_point=np.array([7.0, 3.0], dtype=np.float64),
+        direction=np.array([1.0, 0.0], dtype=np.float64),
         loss=0.0
     )
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
@@ -68,20 +68,20 @@ def test_noisy_horizontal_then_vertical():
     points = np.array([
         [0,0], [1,0.1], [2,-0.1], [3,0.05],   # noisy horizontal
         [3.1,1], [2.9,2], [3.05,3], [3,4.1]   # noisy vertical
-    ])
+    ], dtype=np.float64)
 
     seg1_params = LineSegmentParams(
-        start_point=np.array([0,0]),
-        end_point=np.array([3,0]),
-        direction=np.array([1,0]),
+        start_point=np.array([0.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 0.0], dtype=np.float64),
+        direction=np.array([1.0, 0.0], dtype=np.float64),
         loss=0.1
     )
     seg1 = SequenceSegment(points, 0, 3, seg1_params)
 
     seg2_params = LineSegmentParams(
-        start_point=np.array([3,0]),
-        end_point=np.array([3,4]),
-        direction=np.array([0,1]),
+        start_point=np.array([3.0, 0.0], dtype=np.float64),
+        end_point=np.array([3.0, 4.0], dtype=np.float64),
+        direction=np.array([0.0, 1.0], dtype=np.float64),
         loss=0.1
     )
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
@@ -96,20 +96,20 @@ def test_noisy_horizontal_then_vertical():
 def test_closed_polygon_square():
     points = np.array([
         [0,0], [1,0], [2,0], [2,1], [2,2], [1,2], [0,2], [0,1], [0,0]
-    ])
+    ], dtype=np.float64)
 
     seg1_params = LineSegmentParams(
-        start_point=np.array([0,0]),
-        end_point=np.array([2,0]),
-        direction=np.array([1,0]),
+        start_point=np.array([0.0, 0.0], dtype=np.float64),
+        end_point=np.array([2.0, 0.0], dtype=np.float64),
+        direction=np.array([1.0, 0.0], dtype=np.float64),
         loss=0.0
     )
     seg1 = SequenceSegment(points, 0, 2, seg1_params)
 
     seg2_params = LineSegmentParams(
-        start_point=np.array([2,0]),
-        end_point=np.array([2,2]),
-        direction=np.array([0,1]),
+        start_point=np.array([2.0, 0.0], dtype=np.float64),
+        end_point=np.array([2.0, 2.0], dtype=np.float64),
+        direction=np.array([0.0, 1.0], dtype=np.float64),
         loss=0.0
     )
     seg2 = SequenceSegment(points, 3, 5, seg2_params)
