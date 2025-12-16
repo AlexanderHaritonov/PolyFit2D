@@ -215,7 +215,7 @@ class FitterToPointsSequence:
         squared_errors_seg2 = segment2.line_segment_params.squared_distances_to_line(relevant_points)
         errors_cumsum1 = squared_errors_seg1.cumsum()
         errors_cumsum2 = squared_errors_seg2[::-1].cumsum()
-        compound_error_sums = errors_cumsum1 + errors_cumsum2[::-1]
+        compound_error_sums = errors_cumsum1[:-1] + errors_cumsum2[-2::-1]
         optimal_last_index = np.argmin(compound_error_sums) # counting from left_limit as 0
         return (int(optimal_last_index) + left_limit) % len(self.whole_sequence)
 
