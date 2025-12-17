@@ -20,7 +20,6 @@ A simple example illustrates the workflow:
 The implementation is optimized, uses NumPy broadcasting, and is designed for fast evaluation pipelines on multicore machines.
 
 ## Ideas / future work
-- define a simple output format and an entry-point function that returns it
 - further performance improvements
 - support for fitting segments using quadratic curves (parabolas) or B‑splines
 - support for fitting unordered point sets / point clouds
