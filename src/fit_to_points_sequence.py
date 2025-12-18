@@ -4,7 +4,7 @@ from src.fit_line_segment import fit_line_segment
 from src.line_segment_params import LineSegmentParams
 from src.sequence_segment import SequenceSegment, subsequence
 
-PLOT_SEGMENTS = True
+PLOT_SEGMENTS = False
 
 class FitterToPointsSequence:
     def __init__(self,
@@ -58,7 +58,7 @@ class FitterToPointsSequence:
             new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
             if self.verbose: print(f"variance: {new_variance}")
             if self.verbose and PLOT_SEGMENTS:
-                from src.sequence_segment import plot_segments
+                from src.plotting import plot_segments
                 plot_segments(segmentation_after_split)
 
             if new_variance < self.tolerance:
