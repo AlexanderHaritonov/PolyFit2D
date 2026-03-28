@@ -1,6 +1,7 @@
 import numpy as np
-from src.fit_to_points_sequence import FitterToPointsSequence
-from src.sequence_segment import print_segments_info, plot_segments
+from src.fit_to_points_sequence import FitterToPointsSequence, FitterConfig
+from src.sequence_segment import print_segments_info
+from src.plotting import plot_segments
 
 
 def test_fit_closed_polygon_four_segments():
@@ -15,9 +16,7 @@ def test_fit_closed_polygon_four_segments():
     fitter = FitterToPointsSequence(
         points,
         is_closed=True,
-        max_segments_count=10,
-        tolerance=0.001,
-        verbose=False
+        config=FitterConfig(max_segments_count=10, tolerance=0.001, verbose=False)
     )
 
     segments = fitter.fit()
@@ -60,9 +59,7 @@ def test_fit_closed_polygon_four_segments_rotated_45deg():
     fitter = FitterToPointsSequence(
         points,
         is_closed=True,
-        max_segments_count=10,
-        tolerance=0.001,
-        verbose=False
+        config=FitterConfig(max_segments_count=10, tolerance=0.001, verbose=False)
     )
 
     segments = fitter.fit()

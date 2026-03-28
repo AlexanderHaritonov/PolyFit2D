@@ -1,4 +1,5 @@
 import numpy as np
+from dataclasses import dataclass
 
 from src.fit_line_segment import fit_line_segment
 from src.line_segment_params import LineSegmentParams
@@ -6,14 +7,18 @@ from src.sequence_segment import SequenceSegment, subsequence
 
 PLOT_SEGMENTS = False
 
+@dataclass
+class FitterConfig:
+    max_segments_count: int = 30
+    max_adjust_iterations: int = 20
+    tolerance: float = 2.0
+    verbose: bool = False
+
 class FitterToPointsSequence:
     def __init__(self,
                  points_sequence: np.ndarray,
-                 is_closed = False,
-                 max_segments_count = 30,
-                 max_adjust_iterations = 20,
-                 tolerance = 2,
-                 verbose = False):
+                 is_closed: bool = False,
+                 config: FitterConfig = None):
 
         # If closed contour and last point equals first point, remove the duplicate
         if is_closed and np.array_equal(points_sequence[0], points_sequence[-1]):
@@ -21,10 +26,7 @@ class FitterToPointsSequence:
         else:
             self.whole_sequence = points_sequence
         self.is_closed = is_closed
-        self.max_segments_count = max_segments_count
-        self.max_adjust_iterations = max_adjust_iterations
-        self.tolerance = tolerance
-        self.verbose = verbose
+        self.config = config or FitterConfig()
 
     def fit(self) -> list[SequenceSegment]:
         segment_params: LineSegmentParams = fit_line_segment(self.whole_sequence)
@@ -36,37 +38,37 @@ class FitterToPointsSequence:
         segments = [initial_segment]
 
         variance = segment_params.loss
-        if variance < self.tolerance:
+        if variance < self.config.tolerance:
             return segments
 
         while True:
-            if len(segments) >= self.max_segments_count:
-                if self.verbose: print("Max segments count reached. Exiting.")
+            if len(segments) >= self.config.max_segments_count:
+                if self.config.verbose: print("Max segments count reached. Exiting.")
                 return segments
 
             #variance = sum(s.line_segment_params.loss for s in segments) / len(segments)
 
             index_of_segment_to_split = self.choose_segment_index_for_split(segments)
             if index_of_segment_to_split is None:
-                if self.verbose: print("No segments to split. Breaking up at", len(segments), "segments.")
+                if self.config.verbose: print("No segments to split. Breaking up at", len(segments), "segments.")
                 return segments
-            if self.verbose:
+            if self.config.verbose:
                 print(f"splitting at {index_of_segment_to_split}")
 
             segmentation_after_split = self.split_segment(segments, index_of_segment_to_split)
 
             new_variance = self.adjust_segmentation(segmentation_after_split, index_of_segment_to_split)
-            if self.verbose: print(f"variance: {new_variance}")
-            if self.verbose and PLOT_SEGMENTS:
+            if self.config.verbose: print(f"variance: {new_variance}")
+            if self.config.verbose and PLOT_SEGMENTS:
                 from src.plotting import plot_segments
                 plot_segments(segmentation_after_split)
 
-            if new_variance < self.tolerance:
-                if self.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than tolerance.")
+            if new_variance < self.config.tolerance:
+                if self.config.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than tolerance.")
                 return segmentation_after_split
 
-            if new_variance > variance - self.tolerance:
-                if self.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
+            if new_variance > variance - self.config.tolerance:
+                if self.config.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
                 return segments
 
             segments = segmentation_after_split
@@ -141,7 +143,7 @@ class FitterToPointsSequence:
 
     def adjust_segmentation(self, segments: list[SequenceSegment], start_segment_index:int) -> float:
         variance = 0
-        for iterations_count in range(self.max_adjust_iterations):
+        for iterations_count in range(self.config.max_adjust_iterations):
             # The start segment is typically the 1st segment of the pair resulting from the split.
             # Then we do iterations of following (at most MAX_ITERATIONS)
             # we go in the direction of increasing index and for each segment:
@@ -189,18 +191,18 @@ class FitterToPointsSequence:
                 segments[0].refit()
 
             variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
-            if variance < self.tolerance:
-                if self.verbose:
+            if variance < self.config.tolerance:
+                if self.config.verbose:
                     print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than tolerance. Breaking up")
                 return variance
 
             if changes_count == 0:
-                if self.verbose:
+                if self.config.verbose:
                     print(f"at {len(segments)} segments, {iterations_count} iterations were no changes. Breaking up")
                 return variance
 
-        if self.verbose:
-            print(f"at {len(segments)} segments, adjust_segmentation reached {self.max_adjust_iterations} iterations.")
+        if self.config.verbose:
+            print(f"at {len(segments)} segments, adjust_segmentation reached {self.config.max_adjust_iterations} iterations.")
         return variance
 
 

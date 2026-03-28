@@ -3,7 +3,7 @@ from skimage import measure
 import matplotlib.pyplot as plt
 import time
 
-from src.fit_to_points_sequence import FitterToPointsSequence
+from src.fit_to_points_sequence import FitterToPointsSequence, FitterConfig
 from src.plotting import show_fitted_polygon
 from src.sequence_segment import print_segments_info
 
@@ -84,11 +84,13 @@ def fit_polygon(contour, verbose = True):
     fitter = FitterToPointsSequence(
         points_sequence=contour,
         is_closed=True,
-        max_segments_count=15,
-        max_adjust_iterations=20,
-        tolerance=0.2,
-        #verbose=verbose
-        verbose=False
+        config=FitterConfig(
+            max_segments_count=15,
+            max_adjust_iterations=20,
+            tolerance=0.2,
+            #verbose=verbose
+            verbose=False
+        )
     )
 
     # Fit line segments to the contour
