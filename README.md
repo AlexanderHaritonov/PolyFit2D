@@ -9,6 +9,9 @@ Unlike common point‑thinning algorithms (Ramer–Douglas–Peucker, Visvalinga
 
 ## Example
 A simple example illustrates the workflow:
+
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python example_usage.py
+
 - The input is a dense bitmask produced by a segmentation model.
 ![input bitmask](step1_bitmap.png)
 - A contour is extracted from the bitmask using skimage.measure.find_contours.
