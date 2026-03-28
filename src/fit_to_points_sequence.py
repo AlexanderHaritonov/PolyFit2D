@@ -74,10 +74,11 @@ class FitterToPointsSequence:
             segments = segmentation_after_split
             variance = new_variance
 
-    @staticmethod
-    def choose_segment_index_for_split(segments: list[SequenceSegment]) -> int | None:
+    def choose_segment_index_for_split(self, segments: list[SequenceSegment]) -> int | None:
         point_counts = [ segments[i].points_count() for i in range(len(segments)) ]
-        eligible = [i for i in range(len(segments)) if point_counts[i] > 3]
+        eligible = [i for i in range(len(segments))
+                    if point_counts[i] > 3
+                    and segments[i].line_segment_params.loss / point_counts[i] > self.config.tolerance]
         if eligible:
             return max(eligible, key=lambda i: segments[i].line_segment_params.loss / point_counts[i])
         else:
