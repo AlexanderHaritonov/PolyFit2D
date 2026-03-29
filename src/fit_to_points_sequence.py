@@ -89,6 +89,10 @@ class FitterToPointsSequence:
                 break
             a = segments[i]
             b = segments[(i + 1) % n]
+            # cheap pre-check: skip pairs whose directions diverge by more than ~11°
+            if abs(float(np.dot(a.line_segment_params.direction, b.line_segment_params.direction))) < 0.98:
+                i += 1
+                continue
             combined = subsequence(self.whole_sequence, a.first_index, b.last_index)
             combined_fit = fit_line_segment(combined)
             if combined_fit.loss / len(combined) <= self.config.tolerance:
