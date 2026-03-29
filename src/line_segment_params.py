@@ -9,6 +9,7 @@ class LineSegmentParams:
     end_point: NDArray[np.float64]
     direction: NDArray[np.float64]  # unit (length 1) direction vector
     loss: float
+    straightness: float = 0.0  # min_eigenvalue / max_eigenvalue: 0 = perfectly straight, 1 = circular
 
     def squared_distances_to_line(self, points: np.ndarray) -> np.ndarray:
         v = points - self.start_point

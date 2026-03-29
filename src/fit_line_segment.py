@@ -31,9 +31,11 @@ def fit_line_segment(points: np.ndarray) -> LineSegmentParams:
 
     # Error = SSE = N * min eigenvalue
     N = points.shape[0]
-    error = N * np.min(eigvals)
+    min_eigval, max_eigval = np.min(eigvals), np.max(eigvals)
+    error = N * min_eigval
+    straightness = float(min_eigval / max_eigval) if max_eigval > 0 else 0.0
 
-    return LineSegmentParams(p1, p2, direction, error)
+    return LineSegmentParams(p1, p2, direction, error, straightness)
 
 if __name__ == '__main__':
     from timeit import default_timer as timer
