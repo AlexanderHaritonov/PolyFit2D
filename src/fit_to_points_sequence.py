@@ -79,30 +79,34 @@ class FitterToPointsSequence:
             variance = new_variance
 
     def _merge_collinear_segments(self, segments: list[SequenceSegment]) -> list[SequenceSegment]:
-        changed = True
-        while changed:
-            changed = False
+        # single-pass index walk,
+        # in case of merge index is set back to try the merge with neighbout segment
+        i = 0 
+        while True:
             n = len(segments)
-            first_segment_indices = range(n) if self.is_closed else range(n-1)
-            for i in first_segment_indices:
-                a = segments[i]
-                b = segments[(i + 1) % n]
-                combined = subsequence(self.whole_sequence, a.first_index, b.last_index)
-                combined_fit = fit_line_segment(combined)
-                if combined_fit.loss / combined.shape[0] <= self.config.tolerance:
-                    merged = SequenceSegment(
-                        whole_sequence=self.whole_sequence,
-                        first_index=a.first_index,
-                        last_index=b.last_index,
-                        line_segment_params=combined_fit)
-                    if self.is_closed and i == n - 1:
-                        segments = [merged] + segments[1:-1]
-                    else:
-                        segments = segments[:i] + [merged] + segments[i+2:]
-                    if self.config.verbose:
-                        print(f"Merged segments {i} and {(i+1) % n}")
-                    changed = True
-                    break
+            limit = n if self.is_closed else n - 1
+            if i >= limit or n < 2:
+                break
+            a = segments[i]
+            b = segments[(i + 1) % n]
+            combined = subsequence(self.whole_sequence, a.first_index, b.last_index)
+            combined_fit = fit_line_segment(combined)
+            if combined_fit.loss / len(combined) <= self.config.tolerance:
+                # do the merge
+                merged = SequenceSegment(
+                    whole_sequence=self.whole_sequence,
+                    first_index=a.first_index,
+                    last_index=b.last_index,
+                    line_segment_params=combined_fit)
+                if self.is_closed and i == n - 1:
+                    segments = [merged] + segments[1:-1]
+                else:
+                    segments = segments[:i] + [merged] + segments[i+2:]
+                if self.config.verbose:
+                    print(f"Merged segments {i} and {(i+1) % n}")
+                i = max(0, i - 1)
+            else:
+                i += 1
         return segments
 
     def choose_segment_index_for_split(self, segments: list[SequenceSegment]) -> int | None:
