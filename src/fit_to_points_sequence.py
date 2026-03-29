@@ -208,27 +208,38 @@ class FitterToPointsSequence:
 
             changes_count = 0
 
+            start_segment_dirty = False
             for i in range(start_segment_index, len(segments) - 2):
                 count_of_points_changing_segment = find_optimal_break_and_adjust(segments[i], segments[i+1])
                 if count_of_points_changing_segment > 1:
                     changes_count += 1
-                segments[i+1].refit()
-            segments[start_segment_index].refit()
+                if count_of_points_changing_segment > 0:
+                    if i == start_segment_index:
+                        start_segment_dirty = True
+                    segments[i+1].refit()
+            if start_segment_dirty:
+                segments[start_segment_index].refit()
 
             reverse_run_start = start_segment_index - 1 if start_segment_index > 0 else len(segments) - 2
+            segment0_dirty = False
             for i in range(reverse_run_start, -1, -1):
                 count_of_points_changing_segment = find_optimal_break_and_adjust(segments[i], segments[i+1])
                 if count_of_points_changing_segment > 1:
                     changes_count += 1
-                segments[i+1].refit()
-            segments[0].refit()
+                if count_of_points_changing_segment > 0:
+                    if i == 0:
+                        segment0_dirty = True
+                    segments[i+1].refit()
+            if segment0_dirty:
+                segments[0].refit()
 
             if self.is_closed:
                 count_of_points_changing_segment = find_optimal_break_and_adjust(segments[-1], segments[0])
                 if count_of_points_changing_segment > 1:
                     changes_count += 1
-                segments[-1].refit()
-                segments[0].refit()
+                if count_of_points_changing_segment > 0:
+                    segments[-1].refit()
+                    segments[0].refit()
 
             variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
             if variance < self.config.tolerance:
