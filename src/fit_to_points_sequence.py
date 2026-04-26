@@ -12,7 +12,22 @@ class FitterConfig:
     max_segments_count: int = 30
     max_adjust_iterations: int = 20
     tolerance: float = 2.0
+    # When None, each falls back to `tolerance`.
+    # segment_tolerance: per-segment MSE (px²) — split eligibility & merge feasibility.
+    # global_tolerance:  aggregate Σ(loss·N_seg)/N_total (px²) — overall stop criterion.
+    # min_split_improvement: minimum drop in global aggregate per split (px²).
+    segment_tolerance: float | None = None
+    global_tolerance: float | None = None
+    min_split_improvement: float | None = None
     verbose: bool = False
+
+    def __post_init__(self):
+        if self.segment_tolerance is None:
+            self.segment_tolerance = self.tolerance
+        if self.global_tolerance is None:
+            self.global_tolerance = self.tolerance
+        if self.min_split_improvement is None:
+            self.min_split_improvement = self.tolerance
 
 class FitterToPointsSequence:
     def __init__(self,
@@ -42,7 +57,7 @@ class FitterToPointsSequence:
         segments = [initial_segment]
 
         variance = segment_params.loss
-        if variance < self.config.tolerance:
+        if variance < self.config.global_tolerance:
             return segments
 
         while True:
@@ -67,11 +82,11 @@ class FitterToPointsSequence:
                 from src.plotting import plot_segments
                 plot_segments(segmentation_after_split)
 
-            if new_variance < self.config.tolerance:
-                if self.config.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than tolerance.")
+            if new_variance < self.config.global_tolerance:
+                if self.config.verbose: print(f"Breaking up at {len(segmentation_after_split)} because variance is less than global_tolerance.")
                 return segmentation_after_split
 
-            if new_variance > variance - self.config.tolerance:
+            if new_variance > variance - self.config.min_split_improvement:
                 if self.config.verbose: print("Breaking up because of no improvement at", len(segments), "segments.")
                 return segments
 
@@ -95,7 +110,7 @@ class FitterToPointsSequence:
                 continue
             combined = subsequence(self.whole_sequence, a.first_index, b.last_index)
             combined_fit = fit_line_segment(combined)
-            if combined_fit.loss / len(combined) <= self.config.tolerance:
+            if combined_fit.loss / len(combined) <= self.config.segment_tolerance:
                 # do the merge
                 merged = SequenceSegment(
                     whole_sequence=self.whole_sequence,
@@ -117,7 +132,7 @@ class FitterToPointsSequence:
         point_counts = [ segments[i].points_count() for i in range(len(segments)) ]
         eligible = [i for i in range(len(segments))
                     if point_counts[i] > 3
-                    and segments[i].line_segment_params.loss / point_counts[i] > self.config.tolerance]
+                    and segments[i].line_segment_params.loss / point_counts[i] > self.config.segment_tolerance]
         if eligible:
             return max(eligible, key=lambda i: segments[i].line_segment_params.loss / point_counts[i])
         else:
@@ -242,9 +257,9 @@ class FitterToPointsSequence:
                     segments[0].refit()
 
             variance = sum(s.line_segment_params.loss * s.points_count() for s in segments) / len(self.whole_sequence)
-            if variance < self.config.tolerance:
+            if variance < self.config.global_tolerance:
                 if self.config.verbose:
-                    print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than tolerance. Breaking up")
+                    print(f"at {len(segments)} segments, {iterations_count} iterations variance smaller than global_tolerance. Breaking up")
                 return variance
 
             if changes_count == 0:
