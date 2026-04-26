@@ -10,7 +10,7 @@ Unlike common point‑thinning algorithms (Ramer–Douglas–Peucker, Visvalinga
 ## Example
 A simple example illustrates the workflow:
 
-python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python example_usage.py
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements-examples.txt && python example_usage.py
 
 - The input is a dense bitmask produced by a segmentation model.
 ![input bitmask](step1_bitmap.png)
