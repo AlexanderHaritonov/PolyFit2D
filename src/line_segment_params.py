@@ -12,6 +12,15 @@ class LineSegmentParams:
     straightness: float = 0.0  # min_eigenvalue / max_eigenvalue: 0 = perfectly straight, 1 = circular
 
     def squared_distances_to_line(self, points: np.ndarray) -> np.ndarray:
+        # 2D shortcut: perpendicular to a unit direction (dx, dy) is (-dy, dx),
+        # so the signed perpendicular distance is a single dot product.
+        perp_dir = np.array([-self.direction[1], self.direction[0]])
+        d_perp = (points - self.start_point) @ perp_dir  # one gemv, shape (N,)
+        return d_perp * d_perp
+
+    def squared_distances_to_line_general(self, points: np.ndarray) -> np.ndarray:
+        # Gram-Schmidt decomposition
+        # v = (v·d)d + perp
         v = points - self.start_point
         # Scalar projection lengths (dot product with direction)
         scalar_proj = np.dot(v, self.direction)  # shape (N,)

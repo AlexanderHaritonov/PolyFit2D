@@ -20,12 +20,12 @@ python -m venv .venv && source .venv/bin/activate && pip install -r requirements
 ![fitted segments](step3_fitted_segments.png)
 
 ## Performance
-The implementation is optimized, uses NumPy broadcasting, and is designed for fast evaluation pipelines on multicore machines.
+The implementation is optimized, uses NumPy broadcasting.
 
-## Ideas / future work
-- further performance improvements
+## future work
+- performance tests and comparison
 - support for fitting segments using quadratic curves (parabolas) or B‑splines
-- consider extension to 3D
+- add possiblity to fit multiple polygons in parallel - on different cores
 
 
 ## Running Tests
