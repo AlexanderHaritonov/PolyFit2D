@@ -1,5 +1,5 @@
 # PolyFit2D
-Given a dense polygon or point cloud, fit a polyline with a minimal number of segments.
+Given a dense polygon, fit a polyline with a minimal number of segments.
 Useful for post‑processing bitmask segmentation outputs from models such as MaskRCNN or YOLO‑Seg, especially when regular or low‑complexity shapes are required:
 - constructing larger structures by matching edges
 - obtaining simple geometric representations
@@ -25,7 +25,6 @@ The implementation is optimized, uses NumPy broadcasting, and is designed for fa
 ## Ideas / future work
 - further performance improvements
 - support for fitting segments using quadratic curves (parabolas) or B‑splines
-- support for fitting unordered point sets / point clouds
 - consider extension to 3D
 
 
