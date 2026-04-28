@@ -11,12 +11,6 @@ Secondary goal: characterize wall-time vs. contour length against the practical 
 
 The output of this work is a benchmark harness, a [performance_test/](.) folder of result CSVs and plots, and a short report section appended to the README.
 
-## Status
-
-- **Environment.** No venv. Using system Python 3.12 directly. Already installed: `opencv-python` 4.14.0-pre, `scipy` 1.11.4, `scikit-image` 0.22.0, `matplotlib` 3.6.3, `pycocotools`, `numpy` 1.26.4.
-- **Tolerance semantics resolved.** `FitterConfig` originally had a single `tolerance` field doing triple duty across three different formulas (per-segment MSE, weighted-SSE global aggregate, no-improvement delta). It has now been split into three knobs (`segment_tolerance`, `global_tolerance`, `min_split_improvement`) and the public API converted to **linear pixels with RMS-perpendicular-distance semantics**, squared once internally. See [../src/fit_to_points_sequence.py](../src/fit_to_points_sequence.py).
-- **Tolerance ↔ ε mapping derived.** For smooth arc-shaped residuals (cosine model), `ε_rdp ≈ √2 · segment_tolerance`. Used to align native-tolerance sweeps below.
-
 ## Metrics
 
 Three primary metrics, each answering a distinct question. Skip Fréchet (redundant with Hausdorff for closed contours, slow to compute).
@@ -76,7 +70,7 @@ The native tolerances are aligned via the cosine-residual model `ε_rdp ≈ √2
 | 5.0 | 3.54 |
 | 8.0 | 5.66 |
 
-For the first pass, set `segment_tolerance = global_tolerance = min_split_improvement = tolerance` (legacy single-knob behavior). Studying the three knobs as orthogonal axes is a separate experiment.
+For the first pass, set `segment_tolerance = global_tolerance = min_split_improvement = tolerance`. Studying the three knobs as orthogonal axes is a separate experiment.
 
 ## Datasets
 
@@ -135,10 +129,17 @@ Aggregate (mean, median, p95) across `contour_id` for each `(algorithm, toleranc
 
 1. **`metrics.py`** — `hausdorff`, `iou_rasterized`, `mean_distance`. Verify on synthetic shapes (square, noisy circle).
 2. **`baselines.py`** — `rdp_opencv(contour, eps)` and `polyfit2d(contour, tol)` wrappers returning a uniform `(M, 2)` polyline.
-3. **Smoke test** — one synthetic noisy-circle contour, both algorithms at one tolerance each, print the metrics. Sanity check: at tolerance → 0, IoU should be ≥ 0.99 for both (this is the rasterization noise floor; differences smaller than this are not meaningful).
+3. **Smoke test** — one synthetic noisy-circle contour, both algorithms at one tolerance each, print the metrics. Sanity check: at tolerance → 0, IoU should be ≥ 0.99 for both.
 4. **`fetch_coco.py` + `extract_contours.py`** — download once, cache contours as `.npz`.
-5. **`run_benchmark.py`** — full sweep on cached contours.
-6. **`plot_results.py`** — three figures + summary table.
+5. **IoU noise-floor measurement** — run both algorithms at the tightest tolerance in the sweep on a few hundred contours and report median + p5/p95 IoU per algorithm. Even at tolerance → 0, IoU is not 1.0: rasterization is discrete (sub-pixel rounding, `cv2.fillPoly` vs `skimage.draw.polygon` edge-convention differences, the input mask itself being a re-rasterized polygon). The two algorithms produce systematically different polyline shapes (chord-clipped vs least-squares) and may hit boundary pixels differently, so they need *separate* floors. Why this matters:
+   - **Don't read noise as signal.** A 0.003 IoU gap between algorithms is meaningless if the floor is at the same scale.
+   - **Calibrate the segments-vs-IoU plot.** Above the floor, all algorithms look indistinguishable; the interesting comparisons happen below.
+   - **Detect per-algorithm bias** before the head-to-head comparison.
+
+   Output: two numbers (one per algorithm) saved alongside the results, used to annotate the plots and gate any "PolyFit2D wins on IoU" claim.
+6. **`run_benchmark.py`** — full sweep on cached contours.
+7. **Tolerance-mapping check** — after the first sweep, before plotting, verify that the `ε ≈ √2 · tolerance` mapping holds empirically. The mapping is derived from a cosine residual model and could be off if real contour residuals differ (e.g., dominated by integer-grid quantization noise rather than arc bending). Procedure: bin (algorithm, tolerance) results by measured median Hausdorff and check that the two algorithms' curves overlay in `(Hausdorff, n_segments)` space — i.e., at any given Hausdorff value both algorithms have data points nearby. If one algorithm's curve consistently sits at a tighter or looser effective ε across the whole sweep, shift PolyFit2D's tolerance schedule by a multiplicative factor (e.g., × 1.2) and rerun. This is purely a sweep-alignment fix; it does not change the per-contour comparison logic.
+8. **`plot_results.py`** — three figures + summary table.
 
 ## Plots in the report
 
@@ -164,15 +165,3 @@ Append a section to [../README.md](../README.md) titled "Benchmarks":
 - Link to [performance_test/](.) so results are reproducible.
 
 If results are good, this is also the basis for a blog post / arXiv note. If results are mixed, it tells us where to focus algorithmic work before packaging.
-
-## Open questions to resolve before starting
-
-- **Closed-contour handling in `cv2.approxPolyDP`**: confirm `closed=True` does what we expect on the wrapped index range.
-- **IoU rasterization stability**: at very low tolerance, rasterizing a polygon and the original mask can disagree by ±1 pixel along the boundary even for the identity transformation. Establish a noise floor by running PolyFit2D and OpenCV at tolerance → 0 and reporting the IoU we get (should be > 0.99); use it to discount differences smaller than that.
-- **Tolerance-mapping check**: the `ε ≈ √2 · tolerance` mapping comes from a smooth-arc model. If empirically the curves don't overlay (one algorithm runs at a much tighter effective ε than the other across the sweep), shift PolyFit2D's tolerance schedule by a small factor and rerun.
-
-## Effort estimate
-
-- Tier 1 dataset + harness + RDP comparison: 1–2 days.
-- Plots and report: half a day.
-- Imai–Iri implementation + integration: 1 day, only if motivated by Tier 1 results.
