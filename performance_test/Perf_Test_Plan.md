@@ -13,7 +13,7 @@ The output of this work is a benchmark harness, a [performance_test/](.) folder 
 
 ## Metrics
 
-Three primary metrics, each answering a distinct question. Skip Fréchet (redundant with Hausdorff for closed contours, slow to compute).
+Three primary metrics, each answering a distinct question. 
 
 | Metric | Question it answers | How to compute |
 |---|---|---|
@@ -23,13 +23,12 @@ Three primary metrics, each answering a distinct question. Skip Fréchet (redund
 | Mean distance (point → polyline) | Average fidelity (supplementary) | per-point min distance, mean |
 | Wall time per contour | Speed | `time.perf_counter()` around the fit call |
 
-Rasterization for IoU: `skimage.draw.polygon(rr, cc, shape=mask.shape)` or `cv2.fillPoly`.
+Rasterization for IoU: `cv2.fillPoly`.
 
 ## Baselines
 
 ### Required: OpenCV `cv2.approxPolyDP` (RDP)
-
-Already installed (system Python). Usage on a contour produced by `skimage.measure.find_contours`:
+Already installed (system Python). 
 
 ```python
 import cv2
@@ -58,7 +57,8 @@ Defer this until after the RDP comparison is done. Only invest the day if the RD
 
 Two algorithms, two native tolerances. We use the **native-tolerance / post-hoc-metric** convention: each algorithm runs on its own tolerance, then we measure the same downstream metrics (Hausdorff, IoU, mean distance) and plot in shared metric space.
 
-The native tolerances are aligned via the cosine-residual model `ε_rdp ≈ √2 · segment_tolerance` to start the sweeps in roughly comparable regimes:
+The native tolerances are aligned via the cosine-residual model `ε_rdp ≈ √2 · segment_tolerance` to start the sweeps in roughly comparable regimes,
+as RDP uses the L∞ tolerance, Polifit2D user L2 tolerance:
 
 | RDP `epsilon` (px) | PolyFit2D `tolerance` ≈ ε / √2 (px) |
 |---|---|
