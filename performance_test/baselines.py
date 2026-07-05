@@ -20,7 +20,7 @@ def rdp_opencv(contour: np.ndarray, epsilon: float) -> np.ndarray:
     pts_cv = contour.reshape(-1, 1, 2).astype(np.float32)
     approx = cv2.approxPolyDP(pts_cv, epsilon=float(epsilon), closed=True)
     poly = approx.reshape(-1, 2).astype(np.float64)
-    # cv2 omits the closing duplicate; restore it for a uniform contract.
+    # cv2 omits the closing duplicate. restore it.
     if not np.array_equal(poly[0], poly[-1]):
         poly = np.vstack([poly, poly[0]])
     return poly

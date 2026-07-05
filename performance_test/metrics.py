@@ -11,11 +11,10 @@ def hausdorff(poly_a: np.ndarray, poly_b: np.ndarray, sample_step: float = 1.0) 
     """Symmetric polyline-Hausdorff distance in pixels.
 
     Treats both inputs as closed polylines (sequences of edges), not point
-    clouds: distance is point-to-edge, not point-to-point. The point-cloud
+    clouds: distance is point-to-edge.
+    The point-cloud
     version (`scipy.spatial.distance.directed_hausdorff`) overestimates
-    badly when one polyline is sparse and the other dense, because dense-
-    contour points sitting between sparse vertices are far from any vertex
-    yet close to the edge between them.
+    badly when one polyline is sparse and the other dense.
 
     Both polylines are densified to ≤ `sample_step` px between samples so
     that the B→A direction sees edge midpoints of B, not only its vertices.
@@ -80,20 +79,16 @@ def iou_rasterized(
     return float(inter) / float(union)
 
 
-def mean_distance(contour: np.ndarray, poly: np.ndarray) -> float:
+def rms_distance(contour: np.ndarray, poly: np.ndarray) -> float:
     """
-    Mean of per-point minimum distances from contour points to the closed
-    simplified polygon's boundary.
+    RMS of per-point minimum perpendicular distances from contour points to
+    the closed simplified polygon's edges.
 
     contour : (N, 2) dense input contour in (x, y)
     poly    : (M, 2) closed polyline in (x, y); first point must equal last
     """
-    poly_cv = poly.reshape(-1, 1, 2).astype(np.float32)
-    dists = [
-        abs(cv2.pointPolygonTest(poly_cv, (float(p[0]), float(p[1])), True))
-        for p in contour
-    ]
-    return float(np.mean(dists))
+    dists = _point_to_polyline_distances(contour, poly)
+    return float(np.sqrt(np.mean(dists ** 2)))
 
 
 # ---------------------------------------------------------------------------
@@ -143,20 +138,20 @@ if __name__ == "__main__":
     assert iou_shrunk < 0.98, f"expected < 0.98, got {iou_shrunk}"
     print("  ✓")
 
-    # --- 3. Mean distance: contour vs itself ---
-    md0 = mean_distance(circle_closed, circle_closed)
-    print(f"mean_distance(circle, circle) = {md0:.6f}  (expect 0.0)")
-    assert md0 < 1e-9, f"expected 0, got {md0}"
+    # --- 3. RMS distance: contour vs itself ---
+    rms0 = rms_distance(circle_closed, circle_closed)
+    print(f"rms_distance(circle, circle) = {rms0:.6f}  (expect 0.0)")
+    assert rms0 < 1e-9, f"expected 0, got {rms0}"
     print("  ✓")
 
-    # mean distance from dense circle to its 4-point bounding square
+    # RMS distance from dense circle to its 4-point bounding square
     # expect roughly r*(1 - pi/4) ≈ 10.7 px  (analytical for circle→square)
     sq_big = np.array(
         [[100, 100], [200, 100], [200, 200], [100, 200], [100, 100]], dtype=float
     )
-    md_circ_sq = mean_distance(circle_closed, sq_big)
-    print(f"mean_distance(circle r=50, bounding square) = {md_circ_sq:.2f}  (expect ~10–12 px)")
-    assert 5 < md_circ_sq < 20, f"out of expected range: {md_circ_sq}"
+    rms_circ_sq = rms_distance(circle_closed, sq_big)
+    print(f"rms_distance(circle r=50, bounding square) = {rms_circ_sq:.2f}  (expect ~5–12 px)")
+    assert 3 < rms_circ_sq < 15, f"out of expected range: {rms_circ_sq}"
     print("  ✓")
 
     print("\nAll metric self-tests passed.")

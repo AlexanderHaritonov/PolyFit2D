@@ -2,26 +2,22 @@
 
 ## Goal
 
-Produce evidence — not rhetoric — for the two claims currently in [../README.md](../README.md):
+1. Produce evidence for:
 
-1. PolyFit2D yields fewer segments than common simplifiers at equivalent fidelity.
-2. PolyFit2D preserves area and corners (no shrinkage, no rounding) better than common simplifiers at equivalent segment count.
+- PolyFit2D yields fewer segments than common simplifiers at equivalent fidelity (how closely the simplified polygon matches the original contour).
+- PolyFit2D preserves area and corners (no shrinkage, no rounding) better than common simplifiers at equivalent segment count.
 
-Secondary goal: characterize wall-time vs. contour length against the practical baseline (`cv2.approxPolyDP`).
+2. Compare runtime against the practical baseline (`cv2.approxPolyDP`) on different contour lengths.
 
-The output of this work is a benchmark harness, a [performance_test/](.) folder of result CSVs and plots, and a short report section appended to the README.
-
-## Metrics
-
-Three primary metrics, each answering a distinct question. 
+# Metrics
 
 | Metric | Question it answers | How to compute |
 |---|---|---|
-| **Segment count** | Representation cost | `len(segments)` |
-| **Hausdorff distance** (symmetric, in pixels) | Worst-case fidelity | `scipy.spatial.distance.directed_hausdorff` both directions, take max |
+| **Segment count** | Shape simplicity / regularity | `len(segments)` |
+| **Hausdorff distance** (symmetric, in pixels) | Worst-case fidelity | densify both polylines, point-to-edge distances, take max |
 | **IoU** (rasterized polygon vs. original mask) | Area / corner preservation | rasterize fitted polygon → bitmap, compare with input mask |
-| Mean distance (point → polyline) | Average fidelity (supplementary) | per-point min distance, mean |
-| Wall time per contour | Speed | `time.perf_counter()` around the fit call |
+| **RMS perpendicular distance** (point → polyline) | Typical fidelity | per-point min distance to edges, RMS |
+| Time per contour | Speed | `time.perf_counter()` |
 
 Rasterization for IoU: `cv2.fillPoly`.
 
@@ -138,14 +134,14 @@ Each algorithm runs once per (contour, tolerance). Wall time is the single `time
 
 ```
 contour_id, n_input_points, algorithm, tolerance,
-n_segments, hausdorff, iou, mean_dist, wall_time_ms
+n_segments, hausdorff, iou, rms_dist, wall_time_ms
 ```
 
 Aggregate (median, p25, p75, p95) across `contour_id` for each `(algorithm, tolerance)` pair → `summary.csv`.
 
 ## Build order
 
-1. **`metrics.py`** — `hausdorff`, `iou_rasterized`, `mean_distance`. Verify on synthetic shapes (square, noisy circle).
+1. **`metrics.py`** — `hausdorff`, `iou_rasterized`, `rms_distance`. Verify on synthetic shapes (square, noisy circle).
 2. **`baselines.py`** — `rdp_opencv(contour, eps)` and `polyfit2d(contour, tol)` wrappers returning a uniform `(M, 2)` polyline.
 3. **Smoke test** — one synthetic noisy-circle contour, both algorithms at one tolerance each, print the metrics. Sanity check: at tolerance → 0, IoU should be ≥ 0.99 for both.
 4. **`fetch_coco.py` + `extract_contours.py`** — download once, cache contours as `.npz`. Filter: ≥ 200 and ≤ 2000 contour points, single connected component, no holes. The upper cap keeps wall-time statistics interpretable and prevents a handful of very large contours from dominating the timing results; contours above the cap are simply skipped (logged).
