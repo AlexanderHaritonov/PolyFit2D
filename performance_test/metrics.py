@@ -91,6 +91,37 @@ def rms_distance(contour: np.ndarray, poly: np.ndarray) -> float:
     return float(np.sqrt(np.mean(dists ** 2)))
 
 
+def corner_metrics(
+    gt_corners: np.ndarray, poly: np.ndarray, tau: float = 2.0
+) -> tuple[float, float, float]:
+    """Corner recall, precision, and localization error vs ground-truth corners.
+
+    recall    — fraction of GT corners with a fitted vertex within `tau` px.
+    precision — fraction of fitted vertices within `tau` px of a GT corner;
+                penalizes spurious vertices (e.g. noise-tracking vertices
+                along straight edges).
+    loc_err   — mean GT-corner → nearest-vertex distance over the recalled
+                corners (NaN if none recalled).
+
+    Matching is nearest-neighbour, not one-to-one, so GT corners must be
+    ≥ 2·tau apart or one vertex could recall two corners (the Tier 0 shape
+    generator must enforce this).
+
+    gt_corners : (K, 2) ground-truth corner positions in (x, y)
+    poly       : (M, 2) closed fitted polyline in (x, y); first point equals last
+    returns    : (recall, precision, loc_err)
+    """
+    verts = poly[:-1]
+    dmat = np.linalg.norm(gt_corners[:, None, :] - verts[None, :, :], axis=2)
+    d_corner = dmat.min(axis=1)   # per GT corner: distance to nearest vertex
+    d_vertex = dmat.min(axis=0)   # per vertex: distance to nearest GT corner
+    matched = d_corner <= tau
+    recall = float(matched.mean())
+    precision = float((d_vertex <= tau).mean())
+    loc_err = float(d_corner[matched].mean()) if matched.any() else float("nan")
+    return recall, precision, loc_err
+
+
 # ---------------------------------------------------------------------------
 # Self-test: run with  python metrics.py
 # ---------------------------------------------------------------------------
@@ -152,6 +183,44 @@ if __name__ == "__main__":
     rms_circ_sq = rms_distance(circle_closed, sq_big)
     print(f"rms_distance(circle r=50, bounding square) = {rms_circ_sq:.2f}  (expect ~5–12 px)")
     assert 3 < rms_circ_sq < 15, f"out of expected range: {rms_circ_sq}"
+    print("  ✓")
+
+    # --- 4. Corner metrics ---
+    sq_corners = sq[:-1]  # the 4 GT corners of the square
+
+    # exact square: all corners recalled at zero error, no spurious vertices
+    rec, prec, err = corner_metrics(sq_corners, sq)
+    print(f"corner_metrics(sq, sq) = recall {rec:.2f}, precision {prec:.2f}, loc_err {err:.4f}  (expect 1.0, 1.0, 0.0)")
+    assert rec == 1.0 and prec == 1.0 and err < 1e-9
+    print("  ✓")
+
+    # vertices shifted by 1 px: still recalled (tau=2), loc_err ≈ sqrt(2)
+    rec, prec, err = corner_metrics(sq_corners, sq + 1.0)
+    print(f"corner_metrics(sq, sq+1) = recall {rec:.2f}, precision {prec:.2f}, loc_err {err:.4f}  (expect 1.0, 1.0, ≈1.41)")
+    assert rec == 1.0 and prec == 1.0 and 1.3 < err < 1.5
+    print("  ✓")
+
+    # chamfered square (corners cut 5 px): nothing within tau=2 → recall 0
+    ch = 5.0
+    chamfered = np.array(
+        [[ch, 0], [100 - ch, 0], [100, ch], [100, 100 - ch],
+         [100 - ch, 100], [ch, 100], [0, 100 - ch], [0, ch], [ch, 0]],
+        dtype=float,
+    )
+    rec, prec, err = corner_metrics(sq_corners, chamfered)
+    print(f"corner_metrics(sq, chamfered 5px) = recall {rec:.2f}, precision {prec:.2f}  (expect 0.0, 0.0)")
+    assert rec == 0.0 and prec == 0.0 and math.isnan(err)
+    print("  ✓")
+
+    # square with spurious edge-midpoint vertices: full recall, half precision
+    sq_mid = np.array(
+        [[0, 0], [50, 0], [100, 0], [100, 50], [100, 100],
+         [50, 100], [0, 100], [0, 50], [0, 0]],
+        dtype=float,
+    )
+    rec, prec, err = corner_metrics(sq_corners, sq_mid)
+    print(f"corner_metrics(sq, sq+midpoints) = recall {rec:.2f}, precision {prec:.2f}  (expect 1.0, 0.5)")
+    assert rec == 1.0 and prec == 0.5 and err < 1e-9
     print("  ✓")
 
     print("\nAll metric self-tests passed.")
