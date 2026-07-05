@@ -6,6 +6,7 @@ Useful for post‑processing bitmask segmentation outputs from models such as Ma
 Unlike common point‑thinning algorithms (Ramer–Douglas–Peucker, Visvalingam–Whyatt, Zhang–Suen), this method:
 - minimizes segment count while preserving the raw shape
 - does not shrink the area or remove corners
+- reconstructs corners with sub-pixel accuracy: vertices are intersections of least-squares fitted lines.
 
 ## Example
 A simple example illustrates the workflow:
@@ -18,6 +19,7 @@ python -m venv .venv && source .venv/bin/activate && pip install -r requirements
 ![extracted contour](step2_contour.png)
 - PolyFit2D fits a minimal‑segment polyline to this contour.
 ![fitted segments](step3_fitted_segments.png)
+- `segments_to_polyline(segments, is_closed=True)` converts the fitted segments to a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export.
 
 ## Performance
 The implementation is optimized, uses NumPy broadcasting.

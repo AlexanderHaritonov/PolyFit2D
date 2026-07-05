@@ -13,6 +13,7 @@ import numpy as np
 import cv2
 
 from src.fit_to_points_sequence import FitterToPointsSequence, FitterConfig
+from src.polyline import segments_to_polyline
 
 
 def rdp_opencv(contour: np.ndarray, epsilon: float) -> np.ndarray:
@@ -35,41 +36,7 @@ def polyfit2d(contour: np.ndarray, tolerance: float) -> np.ndarray:
     """
     config = FitterConfig(tolerance=float(tolerance), max_segments_count=len(contour))
     segments = FitterToPointsSequence(contour, is_closed=True, config=config).fit()
-    return _segments_to_closed_polyline(segments)
-
-
-def _segments_to_closed_polyline(segments) -> np.ndarray:
-    """Vertices are intersections of consecutive fitted infinite lines.
-
-    For nearly-parallel neighbours (|cross| < 1e-9) we fall back to the
-    midpoint of the dangling endpoints, which keeps the polygon well-defined
-    after the collinear-merge pass has already collapsed true colinears.
-    """
-    n = len(segments)
-    if n == 1:
-        # Degenerate: single line "polygon". Use its endpoints, closed.
-        s = segments[0].line_segment_params
-        return np.vstack([s.start_point, s.end_point, s.start_point]).astype(np.float64)
-
-    verts = np.empty((n, 2), dtype=np.float64)
-    for i in range(n):
-        a = segments[i].line_segment_params
-        b = segments[(i + 1) % n].line_segment_params
-        verts[i] = _intersect_lines(a.start_point, a.direction, b.start_point, b.direction,
-                                    fallback_a=a.end_point, fallback_b=b.start_point)
-    # Close the polygon: vertex i is the corner between segment i and segment i+1,
-    # so the polyline starts at vertex n-1 (corner before segment 0) and walks forward.
-    closed = np.vstack([verts[-1], verts[:-1], verts[-1]])
-    return closed
-
-
-def _intersect_lines(p1, d1, p2, d2, fallback_a, fallback_b) -> np.ndarray:
-    cross = d1[0] * d2[1] - d1[1] * d2[0]
-    if abs(cross) < 1e-9:
-        return 0.5 * (np.asarray(fallback_a) + np.asarray(fallback_b))
-    dp = p2 - p1
-    t = (dp[0] * d2[1] - dp[1] * d2[0]) / cross
-    return p1 + t * d1
+    return segments_to_polyline(segments, is_closed=True)
 
 
 # ---------------------------------------------------------------------------
