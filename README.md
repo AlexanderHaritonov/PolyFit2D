@@ -21,30 +21,21 @@ python -m venv .venv && source .venv/bin/activate && pip install -r requirements
 - The input is a dense bitmask produced by a segmentation model.
 
 ![input bitmask](step1_bitmap.png)
-- A contour is extracted from the bitmask using skimage.measure:
-
-contour = measure.find_contours(bitmap, level=0.5)[0]
+- A contour is extracted from the bitmask using skimage.measure.find_contours
 
 ![extracted contour](step2_contour.png)
 
-- Mask2PolyMin fits a minimal‑segment polyline to this contour:
-
-segments = FitterToPointsSequence(contour, is_closed=True).fit()
+- Mask2PolyMin fits a minimal‑segment polyline to this contour
 
 ![fitted segments](step3_fitted_segments.png)
 
-- `segments_to_polyline(segments, is_closed=True)` converts the fitted segments to a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export:
-
-polygon = segments_to_polyline(segments, is_closed=True)
+- `segments_to_polyline()` converts the fitted segments to a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export
 
 ## Performance
 The implementation is optimized, uses NumPy broadcasting.
 
 ## future work
 - performance tests and comparison
-- support for fitting segments using quadratic curves (parabolas) or B‑splines ?
-- add possiblity to fit multiple polygons in parallel - on different cores ?
-
 
 ## Running Tests
 
