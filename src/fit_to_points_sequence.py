@@ -135,12 +135,20 @@ class FitterToPointsSequence:
         return segments
 
     def choose_segment_index_for_split(self, segments: list[SequenceSegment]) -> int | None:
-        point_counts = [ segments[i].points_count() for i in range(len(segments)) ]
-        eligible = [i for i in range(len(segments))
-                    if point_counts[i] > 3
-                    and segments[i].line_segment_params.loss / point_counts[i] > self.config.segment_tolerance_sq]
+        def needs_split(segment: SequenceSegment) -> bool:
+            if segment.points_count() <= 3:
+                return False
+            if segment.line_segment_params.loss / segment.points_count() > self.config.segment_tolerance_sq:
+                return True
+            # The mean-based check alone lets a long segment absorb a few far-off
+            # points around a corner, so also split when any single point is
+            # farther than segment_tolerance from the fitted line.
+            points = self.subsequence(segment.first_index, segment.last_index)
+            return segment.line_segment_params.squared_distances_to_line(points).max() > self.config.segment_tolerance_sq
+
+        eligible = [i for i in range(len(segments)) if needs_split(segments[i])]
         if eligible:
-            return max(eligible, key=lambda i: segments[i].line_segment_params.loss / point_counts[i])
+            return max(eligible, key=lambda i: segments[i].line_segment_params.loss / segments[i].points_count())
         else:
             return None
 
@@ -230,7 +238,7 @@ class FitterToPointsSequence:
             changes_count = 0
 
             start_segment_dirty = False
-            for i in range(start_segment_index, len(segments) - 2):
+            for i in range(start_segment_index, len(segments) - 1):
                 count_of_points_changing_segment = find_optimal_break_and_adjust(segments[i], segments[i+1])
                 if count_of_points_changing_segment > 1:
                     changes_count += 1
