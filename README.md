@@ -25,7 +25,7 @@ python -m venv .venv && source .venv/bin/activate && pip install -r requirements
 
 ![fitted segments](step3_fitted_segments.png)
 
-- `segments_to_polyline()` converts the fitted segments to a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export
+- `fit()` returns `(polygon, segments)`: a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export, plus the underlying fitted segments
 
 ## Performance
 The implementation is optimized, uses NumPy broadcasting.

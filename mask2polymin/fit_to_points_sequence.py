@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from mask2polymin.fit_line_segment import fit_line_segment
 from mask2polymin.line_segment_params import LineSegmentParams
+from mask2polymin.polyline import segments_to_polyline
 from mask2polymin.sequence_segment import SequenceSegment, subsequence
 
 PLOT_SEGMENTS = False
@@ -40,9 +41,13 @@ class FitterToPointsSequence:
         self.is_closed = is_closed
         self.config = config or FitterConfig()
 
-    def fit(self) -> list[SequenceSegment]:
+    def fit(self) -> tuple[np.ndarray, list[SequenceSegment]]:
+        """Fit and return (polygon, segments): the polyline of fitted-line intersections,
+           (M, 2) float vertices (first equals last when closed) and the underlying fitted segments."""
         segments_sequence = self._fit()
-        return self._merge_collinear_segments(segments_sequence)
+        segments = self._merge_collinear_segments(segments_sequence)
+        polygon = segments_to_polyline(segments, is_closed=self.is_closed)
+        return polygon, segments
 
     def _fit(self) -> list[SequenceSegment]:
         segment_params: LineSegmentParams = fit_line_segment(self.whole_sequence)
