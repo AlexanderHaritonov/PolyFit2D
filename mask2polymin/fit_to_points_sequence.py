@@ -186,12 +186,6 @@ class FitterToPointsSequence:
             return fallback.squared_distances_to_line(points)
         return core_line.squared_distances_to_line(points)
 
-    def index_distance(self, a: int, b: int) -> int:
-        d = abs(a - b)
-        if self.is_closed:
-            return min(d, len(self.whole_sequence) - d)  # wrap-around may be the shorter way
-        return d
-
     def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
         pivot_point_index = self.lower_mid_index(segment.first_index, segment.last_index)
@@ -223,9 +217,7 @@ class FitterToPointsSequence:
             #   3. re-fit the current segment.
 
             def find_optimal_break_and_adjust(previous_segment, next_segment)->int:
-                new_last, new_first = self.best_consecutive_segments_separation(previous_segment, next_segment)
-                boundary_shift = max(self.index_distance(previous_segment.last_index, new_last),
-                                     self.index_distance(next_segment.first_index, new_first))
+                new_last, new_first, boundary_shift = self.best_consecutive_segments_separation(previous_segment, next_segment)
                 if boundary_shift > 0:
                     previous_segment.last_index = new_last
                     next_segment.first_index = new_first
@@ -292,9 +284,10 @@ class FitterToPointsSequence:
         return sse_per_segment
 
 
-    def best_consecutive_segments_separation(self, segment1: SequenceSegment, segment2: SequenceSegment) -> tuple[int, int]:
-        """:returns (last index of segment1, first index of segment2),
-        between them 0..config.max_orphans_per_junction points may be left orphaned.
+    def best_consecutive_segments_separation(self, segment1: SequenceSegment, segment2: SequenceSegment) -> tuple[int, int, int]:
+        """:returns (last index of segment1, first index of segment2, boundary shift),
+        between the two indices 0..config.max_orphans_per_junction points may be left orphaned;
+        the shift is how many positions the junction moved (max over its two ends).
         The contested window (that is range of points that can change segment they belong to) is scored against each segment's uncontested core-half line,
         so a junction outlier cannot vouch for itself through its own segment's fit.
         Orphaning a point costs tolerance_sq, so a point is orphaned iff it lies farther than tolerance from both core lines."""
@@ -305,6 +298,11 @@ class FitterToPointsSequence:
         right_limit = self.lower_mid_index(segment2.first_index, segment2.last_index)
         relevant_points = subsequence(self.whole_sequence, left_limit, right_limit)
         assert relevant_points is not None and relevant_points.shape[0] >= 2
+
+        # current cut in window coordinates: both ends lie inside the window, so plain
+        # differences against them give the true shift with no circular-distance handling
+        old_i = (segment1.last_index - left_limit) % n
+        old_j = (segment2.first_index - left_limit) % n
 
         # Fine-tuning is only sound when both lines already fit their points well.
         both_fits_within_tolerance = (
@@ -345,16 +343,16 @@ class FitterToPointsSequence:
         best_i = int(np.argmin(costs))
         best_cost = costs[best_i]
         if not np.isfinite(best_cost):  # no valid cut: keep the current boundary
-            return segment1.last_index, segment2.first_index
+            return segment1.last_index, segment2.first_index, 0
 
-        if not both_fits_within_tolerance:
-            return (left_limit + best_i) % n, (left_limit + best_i + 1) % n
-
-        best_i, best_gap = self._best_cut_with_orphans(head_cum, tail_cum, retained1_outside, retained2_outside,
-                                                       gapless_cost=best_cost, gapless_i=best_i)
-        new_last1 = (left_limit + best_i) % n
-        new_first2 = (left_limit + best_i + best_gap + 1) % n
-        return new_last1, new_first2
+        if both_fits_within_tolerance:
+            best_i, best_gap = self._best_cut_with_orphans(head_cum, tail_cum, retained1_outside, retained2_outside,
+                                                           gapless_cost=best_cost, gapless_i=best_i)
+        else:
+            best_gap = 0
+        new_j = best_i + best_gap + 1
+        boundary_shift = max(abs(best_i - old_i), abs(new_j - old_j))
+        return (left_limit + best_i) % n, (left_limit + new_j) % n, boundary_shift
 
     def _best_cut_with_orphans(self, head_cum, tail_cum, retained1_outside, retained2_outside,
                                gapless_cost, gapless_i) -> tuple[int, int]:
