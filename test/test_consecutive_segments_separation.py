@@ -30,7 +30,7 @@ def test_horizontal_then_vertical():
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
 
     fitter = FitterToPointsSequence(points)
-    last1, first2 = fitter.best_consecutive_segments_separation(seg1, seg2)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     # Expect separation near the end of horizontal (index 3)
     assert last1 in (2, 3)
@@ -59,7 +59,7 @@ def test_horizontal_then_vertical_with_step():
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
 
     fitter = FitterToPointsSequence(points)
-    last1, first2 = fitter.best_consecutive_segments_separation(seg1, seg2)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     # Expect separation near the end of horizontal (index 3)
     assert last1 == 3
@@ -89,7 +89,7 @@ def test_diagonal_then_horizontal():
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
 
     fitter = FitterToPointsSequence(points)
-    last1, first2 = fitter.best_consecutive_segments_separation(seg1, seg2)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     assert last1 in (2, 3)
     assert first2 == last1 + 1  # no orphans
@@ -118,7 +118,7 @@ def test_noisy_horizontal_then_vertical():
     seg2 = SequenceSegment(points, 4, 7, seg2_params)
 
     fitter = FitterToPointsSequence(points)
-    last1, first2 = fitter.best_consecutive_segments_separation(seg1, seg2)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     # With noise, still expect separation near index 3
     assert last1 in (2, 3, 4)
@@ -147,7 +147,7 @@ def test_closed_polygon_square():
     seg2 = SequenceSegment(points, 3, 5, seg2_params)
 
     fitter = FitterToPointsSequence(points, is_closed=True)
-    last1, first2 = fitter.best_consecutive_segments_separation(seg1, seg2)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     assert last1 in (1, 2)
     assert first2 == last1 + 1  # no orphans
