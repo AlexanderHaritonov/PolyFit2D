@@ -152,7 +152,7 @@ class FitterToPointsSequence:
             return None
 
     ''' computes middle index / pivot point, while respecting the possibility for right_index<left_index because of closed sequence / circularity '''
-    def lower_mid_index(self, left_index, right_index) -> int:
+    def _lower_mid_index(self, left_index, right_index) -> int:
         if left_index <= right_index:
             return (left_index + right_index) // 2
         else:
@@ -163,16 +163,16 @@ class FitterToPointsSequence:
             else:
                 return mid_index - l
 
-    def points_count(self, first_index, last_index) -> int:
+    def _points_count(self, first_index, last_index) -> int:
         if last_index > first_index:
             return last_index - first_index + 1
         else:
             return len(self.whole_sequence) - first_index + last_index + 1 # for closed polygon / circular case
 
-    def points_minus_orphans_count(self, segments: list[SequenceSegment]) -> int:
+    def _points_minus_orphans_count(self, segments: list[SequenceSegment]) -> int:
         return sum(s.points_count() for s in segments)
 
-    def refit_segment(self, segment: SequenceSegment) -> None:
+    def _refit_segment(self, segment: SequenceSegment) -> None:
         segment.line_segment_params = fit_range(self._moments, segment.first_index, segment.last_index)
 
     def _squared_errors_to_core_line(self, core_first, core_last, fallback: LineSegmentParams, points) -> np.ndarray:
@@ -188,7 +188,7 @@ class FitterToPointsSequence:
 
     def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
-        pivot_point_index = self.lower_mid_index(segment.first_index, segment.last_index)
+        pivot_point_index = self._lower_mid_index(segment.first_index, segment.last_index)
         seg2_first_index = (pivot_point_index + 1) % len(self.whole_sequence)
         segment1 = SequenceSegment(
             whole_sequence=self.whole_sequence,
@@ -234,9 +234,9 @@ class FitterToPointsSequence:
                 if boundary_shift > 0:
                     if i == start_segment_index:
                         start_segment_dirty = True
-                    self.refit_segment(segments[i+1])
+                    self._refit_segment(segments[i+1])
             if start_segment_dirty:
-                self.refit_segment(segments[start_segment_index])
+                self._refit_segment(segments[start_segment_index])
 
             reverse_run_start = start_segment_index - 1 if start_segment_index > 0 else len(segments) - 2
             segment0_dirty = False
@@ -247,21 +247,21 @@ class FitterToPointsSequence:
                 if boundary_shift > 0:
                     if i == 0:
                         segment0_dirty = True
-                    self.refit_segment(segments[i+1])
+                    self._refit_segment(segments[i+1])
             if segment0_dirty:
-                self.refit_segment(segments[0])
+                self._refit_segment(segments[0])
 
             if self.is_closed:
                 boundary_shift = find_optimal_break_and_adjust(segments[-1], segments[0])
                 if boundary_shift > 1:
                     changes_count += 1
                 if boundary_shift > 0:
-                    self.refit_segment(segments[-1])
-                    self.refit_segment(segments[0])
+                    self._refit_segment(segments[-1])
+                    self._refit_segment(segments[0])
 
             # Point-weighted mean of per-segment SSE for evenly sized segments. Plus "penalty":
             # Each orphan is charged one tolerance-sized outlier, spread over the segments, so orphaning is never free in the stop/improvement gates.
-            assigned_count = self.points_minus_orphans_count(segments)
+            assigned_count = self._points_minus_orphans_count(segments)
             orphans_count = len(self.whole_sequence) - assigned_count
             orphans_penalty = orphans_count * self.config.tolerance_sq / len(segments)
             sse_per_segment = (sum(s.line_segment_params.loss * s.points_count() for s in segments) / assigned_count
@@ -294,8 +294,8 @@ class FitterToPointsSequence:
 
         n = len(self.whole_sequence)
         assert (segment2.first_index - segment1.last_index - 1) % n <= self.config.max_orphans_per_junction
-        left_limit = self.lower_mid_index(segment1.first_index, segment1.last_index)
-        right_limit = self.lower_mid_index(segment2.first_index, segment2.last_index)
+        left_limit = self._lower_mid_index(segment1.first_index, segment1.last_index)
+        right_limit = self._lower_mid_index(segment2.first_index, segment2.last_index)
         relevant_points = subsequence(self.whole_sequence, left_limit, right_limit)
         assert relevant_points is not None and relevant_points.shape[0] >= 2
 
@@ -312,9 +312,9 @@ class FitterToPointsSequence:
             # Score against the uncontested core halves: a junction outlier cannot vouch for itself through the fit it has dragged.
             # The core's outer end may itself hold an undetected outlier of the neighboring junction, so trim up to max_orphans_per_junction points there.
             trim1 = max(0, min(self.config.max_orphans_per_junction,
-                               self.points_count(segment1.first_index, left_limit) - MIN_SEGMENT_POINTS))
+                               self._points_count(segment1.first_index, left_limit) - MIN_SEGMENT_POINTS))
             trim2 = max(0, min(self.config.max_orphans_per_junction,
-                               self.points_count(right_limit, segment2.last_index) - MIN_SEGMENT_POINTS))
+                               self._points_count(right_limit, segment2.last_index) - MIN_SEGMENT_POINTS))
             squared_errors_seg1 = self._squared_errors_to_core_line(
                 (segment1.first_index + trim1) % n, left_limit, segment1.line_segment_params, relevant_points)
             squared_errors_seg2 = self._squared_errors_to_core_line(
@@ -327,9 +327,9 @@ class FitterToPointsSequence:
 
         # points outside the contested window always stay with their segment
         retained1_outside = (0 if left_limit == segment1.first_index
-                             else self.points_count(segment1.first_index, left_limit) - 1)
+                             else self._points_count(segment1.first_index, left_limit) - 1)
         retained2_outside = (0 if right_limit == segment2.last_index
-                             else self.points_count(right_limit, segment2.last_index) - 1)
+                             else self._points_count(right_limit, segment2.last_index) - 1)
 
         # refuse to starve either segment below two points, the minimum needed to fit a line
         w = relevant_points.shape[0]

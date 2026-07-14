@@ -70,8 +70,8 @@ def test_min_segment_guard_blocks_orphaning():
     last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
 
     assert first2 == last1 + 1  # no orphan despite point 1 being >tolerance from both lines
-    n_seg1 = fitter.points_count(seg1.first_index, last1)
-    n_seg2 = fitter.points_count(first2, seg2.last_index)
+    n_seg1 = fitter._points_count(seg1.first_index, last1)
+    n_seg2 = fitter._points_count(first2, seg2.last_index)
     assert n_seg1 >= MIN_SEGMENT_POINTS
     assert n_seg2 >= MIN_SEGMENT_POINTS
 
