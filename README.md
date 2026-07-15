@@ -64,7 +64,7 @@ Tests run headless by default (no plot windows). To show plots during a test run
 SHOW_PLOTS=1 .venv/bin/pytest test/
 ```
 
-Install dev dependencies first if needed: `pip install -r requirements-dev.txt`
+Install dev dependencies first if needed: `pip install -r requirements-dev.txt` — this installs the package itself in editable mode (`-e .`), so no path tricks are needed to import `mask2polymin`.
 
 
 
