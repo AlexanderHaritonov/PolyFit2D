@@ -169,7 +169,9 @@ class FitterToPointsSequence:
                 return mid_index - l
 
     def _points_count(self, first_index, last_index) -> int:
-        if last_index > first_index:
+        # Range convention: first <= last is the linear range [first..last] (equal indices = a single point),
+        # first > last wraps past the end; the full circle is [0..n-1].
+        if last_index >= first_index:
             return last_index - first_index + 1
         else:
             return len(self.whole_sequence) - first_index + last_index + 1 # for closed polygon / circular case

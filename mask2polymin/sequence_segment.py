@@ -13,7 +13,9 @@ class SequenceSegment:
     line_segment_params: Optional[LineSegmentParams] = None
 
     def points_count(self) -> int:
-        if self.last_index > self.first_index:
+        # Range convention: first <= last is the linear range [first..last] (equal indices = a single point),
+        # first > last wraps past the end; the full circle is [0..n-1].
+        if self.last_index >= self.first_index:
             return self.last_index - self.first_index + 1
         else:
             return len(self.whole_sequence) - self.first_index + self.last_index + 1 # for closed polygon / circular case

@@ -20,7 +20,9 @@ def principal_axis(cov_xx: float, cov_yy: float, cov_xy: float) -> tuple[np.ndar
 
 
 def subsequence(sequence: np.ndarray, left, right) -> np.ndarray:
-    if left < right:
+    # Range convention: left <= right is the linear range [left..right] (equal indices = a single point),
+    # left > right wraps past the end; the full circle is [0..n-1].
+    if left <= right:
         return sequence[left:right+1]
     else:
         return np.vstack([ sequence[left:], sequence[:right+1] ])

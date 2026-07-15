@@ -76,6 +76,26 @@ def test_min_segment_guard_blocks_orphaning():
     assert n_seg2 >= MIN_SEGMENT_POINTS
 
 
+def test_two_point_segment_corner_point_is_orphaned():
+    # seg1 has only 2 points, so its half of the contested window is the single point [first..first];
+    # the core trim must read those equal indices as one point and fall back to seg1's own line.
+    # Under the old full-wrap reading of equal indices the "core" spanned nearly the whole sequence
+    # and the corner point (farther than tolerance from both lines) was wrongly adopted into seg1.
+    points = np.array([
+        [0, 0], [1, 0],
+        [1.5, 1.2],
+        [3, 2], [3, 3], [3, 4], [3, 5]
+    ], dtype=np.float64)
+    seg1 = SequenceSegment(points, 0, 1, make_params([0, 0], [1, 0]))
+    seg2 = SequenceSegment(points, 2, 6, make_params([3, 2], [3, 5]))
+
+    fitter = FitterToPointsSequence(points)
+    last1, first2, _ = fitter.best_consecutive_segments_separation(seg1, seg2)
+
+    # orphaning saves min(1.2², 1.5²) = 1.44 at penalty 1.0 => point 2 orphaned
+    assert (last1, first2) == (1, 3)
+
+
 # ---- end to end ----
 
 def square_contour(side=6, corner_displacement=0.0):
