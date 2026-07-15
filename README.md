@@ -33,14 +33,14 @@ python -m venv .venv && source .venv/bin/activate && pip install -r requirements
 
 - The input is a dense bitmask produced by a segmentation model.
 
-![input bitmask](step1_bitmap.png)
+![input bitmask](docs/step1_bitmap.png)
 - A contour is extracted from the bitmask using skimage.measure.find_contours
 
-![extracted contour](step2_contour.png)
+![extracted contour](docs/step2_contour.png)
 
 - Mask2PolyMin fits a minimal‑segment polyline to this contour
 
-![fitted segments](step3_fitted_segments.png)
+![fitted segments](docs/step3_fitted_segments.png)
 
 - `fit()` returns `(polygon, segments)`: a closed polygon of float (sub-pixel) vertices, ready for GeoJSON/SVG/COCO export, plus the underlying fitted segments
 
