@@ -94,6 +94,24 @@ def test_closed_wraparound_merge():
     assert [(s.first_index, s.last_index) for s in result[1:]] == [(4, 9), (10, 15), (16, 20)]
 
 
+def test_short_stub_with_noisy_direction_still_merges():
+    # A 2-point stub fitted through jittered points gets a direction ~22 degrees off the line it belongs to.
+    # The direction pre-check must be bypassed for such short segments so the combined fit (well within tolerance here) can approve the merge.
+    seq = np.array([[0, 0], [1, 0], [2, 0], [3, 0],
+                    [4, 0.2], [5, -0.2],
+                    [6, 0], [7, 0], [8, 0], [9, 0]], dtype=float)
+    fitter = FitterToPointsSequence(seq)
+    segments = make_segments(fitter, [(0, 3), (4, 5), (6, 9)])
+    stub_direction = segments[1].line_segment_params.direction
+    assert abs(float(np.dot(stub_direction, np.array([1.0, 0.0])))) < 0.98  # pre-check would reject
+
+    result = fitter._merge_collinear_segments(segments)
+
+    assert len(result) == 1
+    assert result[0].first_index == 0
+    assert result[0].last_index == 9
+
+
 def test_open_sequence_never_merges_across_the_ends():
     # Open zig-zag: first and last segments are parallel but not adjacent, and an open
     # sequence must not consider the wrap pair at all (limit is n - 1, not n)

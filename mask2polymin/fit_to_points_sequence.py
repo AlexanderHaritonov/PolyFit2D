@@ -11,6 +11,13 @@ PLOT_SEGMENTS = False
 # Hard floor for a line fit; orphaning never squeezes a segment below it.
 MIN_SEGMENT_POINTS = 2
 
+# Below this many points a fitted direction is noise-dominated,
+# so direction-based shortcuts must not trust it.
+MIN_POINTS_FOR_DIRECTION = 5
+
+# cos(~11°): merge candidates whose direction dot product falls below this diverge too much.
+COLLINEAR_DIRECTIONS_MIN_DOT = 0.98
+
 @dataclass
 class FitterConfig:
     max_segments_count: int = 30
@@ -110,7 +117,7 @@ class FitterToPointsSequence:
 
     def _merge_collinear_segments(self, segments: list[SequenceSegment]) -> list[SequenceSegment]:
         # single-pass index walk,
-        # in case of merge index is set back to try the merge with neighbout segment
+        # in case of merge index is set back to try the merge with neighbour segment
         i = 0 
         while True:
             n = len(segments)
@@ -119,10 +126,17 @@ class FitterToPointsSequence:
                 break
             a = segments[i]
             b = segments[(i + 1) % n]
-            # cheap pre-check: skip pairs whose directions diverge by more than ~11°
-            if abs(float(np.dot(a.line_segment_params.direction, b.line_segment_params.direction))) < 0.98:
-                i += 1
-                continue
+            
+            # cheap pre-check: skip pairs whose directions diverge by more than ~11°;
+            # bypassed when either segment is too short for a trustworthy direction estimate
+            directions_trustworthy = (a.points_count() >= MIN_POINTS_FOR_DIRECTION
+                                      and b.points_count() >= MIN_POINTS_FOR_DIRECTION)
+            if directions_trustworthy:
+                directions_diverge = (COLLINEAR_DIRECTIONS_MIN_DOT > abs(float(np.dot(
+                                        a.line_segment_params.direction, b.line_segment_params.direction))))
+                if directions_diverge:
+                    i += 1
+                    continue
             combined = subsequence(self.whole_sequence, a.first_index, b.last_index)
             combined_fit = fit_range(self._moments, a.first_index, b.last_index)
             both_sides_collinear_on_average = combined_fit.loss / len(combined) <= self.config.tolerance_sq
