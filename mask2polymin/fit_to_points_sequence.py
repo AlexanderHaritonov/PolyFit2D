@@ -181,8 +181,9 @@ class FitterToPointsSequence:
         else:
             return None
 
-    ''' computes middle index / pivot point, while respecting the possibility for right_index<left_index because of closed sequence / circularity '''
     def _lower_mid_index(self, left_index, right_index) -> int:
+        """Computes middle index / pivot point, while respecting the possibility for
+        right_index < left_index because of closed sequence / circularity."""
         if left_index <= right_index:
             return (left_index + right_index) // 2
         else:

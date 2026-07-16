@@ -33,7 +33,7 @@ def show_fitted_polygon(bitmap, contour, segments, filename=None):
     plt.tight_layout()
     if filename:
         plt.savefig(filename, dpi=150, bbox_inches='tight')
-        print(f"Plot saved to ${filename}")
+        print(f"Plot saved to '{filename}'")
     plt.show()
 
 def plot_segments(segments: list[SequenceSegment], filename: str = None) -> None:
@@ -66,5 +66,5 @@ def plot_segments(segments: list[SequenceSegment], filename: str = None) -> None
     plt.tight_layout()
     if filename:
         plt.savefig(filename, dpi=150, bbox_inches='tight')
-        print(f"Segments-only plot saved to '${filename}'")
+        print(f"Segments-only plot saved to '{filename}'")
     plt.show()
