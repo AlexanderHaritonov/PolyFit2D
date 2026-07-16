@@ -37,6 +37,16 @@ def test_wrong_shape_raises():
         FitterToPointsSequence(np.zeros((5, 3)))       # 3 columns
 
 
+def test_non_finite_input_raises():
+    bad = np.array(L_SHAPE, dtype=np.float64)
+    bad[2, 1] = np.nan
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        FitterToPointsSequence(bad)
+    bad[2, 1] = np.inf
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        FitterToPointsSequence(bad)
+
+
 def test_too_few_points_raises():
     with pytest.raises(ValueError, match="at least 2 points"):
         FitterToPointsSequence(np.array([[0.0, 0.0]]))

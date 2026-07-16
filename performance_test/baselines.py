@@ -12,7 +12,7 @@ Tolerances are in linear pixels.
 import numpy as np
 import cv2
 
-from mask2polymin.fit_to_points_sequence import FitterToPointsSequence, FitterConfig
+from mask2polymin import FitterToPointsSequence, FitterConfig
 
 
 def rdp_opencv(contour: np.ndarray, epsilon: float) -> np.ndarray:

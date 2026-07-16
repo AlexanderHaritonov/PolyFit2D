@@ -1,7 +1,7 @@
 import numpy as np
 from skimage import measure
 
-from mask2polymin.fit_to_points_sequence import FitterToPointsSequence
+from mask2polymin import FitterToPointsSequence
 from mask2polymin.plotting import show_fitted_polygon
 
 """Create a small bitmap with a simple shape"""

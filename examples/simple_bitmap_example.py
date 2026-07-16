@@ -3,7 +3,7 @@ from skimage import measure
 import matplotlib.pyplot as plt
 import time
 
-from mask2polymin.fit_to_points_sequence import FitterToPointsSequence, FitterConfig
+from mask2polymin import FitterToPointsSequence, FitterConfig
 from mask2polymin.plotting import show_fitted_polygon
 from mask2polymin.sequence_segment import print_segments_info
 

@@ -56,7 +56,7 @@ class FitterToPointsSequence:
     def __init__(self,
                  points_sequence: np.ndarray,
                  is_closed: bool = False,
-                 config: FitterConfig = None):
+                 config: FitterConfig | None = None):
 
         # no-op for float64 (N, 2) ndarray input; coerces lists and integer contours once, up front
         points_sequence = np.asarray(points_sequence, dtype=np.float64)
@@ -64,6 +64,8 @@ class FitterToPointsSequence:
             points_sequence = points_sequence[:, 0, :]  # cv2.findContours' native (N, 1, 2) shape
         if points_sequence.ndim != 2 or points_sequence.shape[1] != 2:
             raise ValueError(f"points_sequence must have shape (N, 2), got {points_sequence.shape}")
+        if not np.isfinite(points_sequence).all():
+            raise ValueError("points_sequence contains NaN or infinite coordinates")
 
         # If closed contour and last point equals first point, remove the duplicate
         if is_closed and len(points_sequence) > 0 and np.array_equal(points_sequence[0], points_sequence[-1]):
@@ -134,7 +136,7 @@ class FitterToPointsSequence:
     def _merge_collinear_segments(self, segments: list[SequenceSegment]) -> list[SequenceSegment]:
         # single-pass index walk,
         # in case of merge index is set back to try the merge with neighbour segment
-        i = 0 
+        i = 0
         while True:
             n = len(segments)
             limit = n if self.is_closed else n - 1
@@ -142,7 +144,7 @@ class FitterToPointsSequence:
                 break
             a = segments[i]
             b = segments[(i + 1) % n]
-            
+
             # cheap pre-check: skip pairs whose directions diverge too much;
             # bypassed when either segment is too short for a trustworthy direction estimate
             directions_trustworthy = (a.points_count() >= MIN_POINTS_FOR_DIRECTION
@@ -245,7 +247,7 @@ class FitterToPointsSequence:
         sse_per_segment = 0
 
         # The separation search is a pure function of the two segments' index ranges.
-        # So if a junction's state is unchanged,that scoring necessarily returned "no move" and would do so again.
+        # So if a junction's state is unchanged, that scoring necessarily returned "no move" and would do so again.
         # Remember the state and skip the re-scoring.
         junction_last_scored_state = [None] * len(segments)
 
@@ -367,7 +369,7 @@ class FitterToPointsSequence:
         i_range = np.arange(w - 1)
         remaining1 = retained1_outside + i_range + 1
         remaining2 = retained2_outside + (w - 1 - i_range)
-        
+
         # masking: infinite cost for cuts that squeeze a segment below the fit minimum
         costs = np.where((remaining1 < MIN_SEGMENT_POINTS) | (remaining2 < MIN_SEGMENT_POINTS),
                          np.inf, head_cum[:-1] + tail_cum[1:])
@@ -406,14 +408,3 @@ class FitterToPointsSequence:
             if costs[i] < best_cost:  # strictly better only: fewer orphans win ties
                 best_cost, best_i, best_gap = costs[i], i, gap
         return best_i, best_gap
-
-
-
-
-
-
-
-
-
-
-

@@ -22,7 +22,7 @@ def show_fitted_polygon(bitmap, contour, segments, filename=None):
         print(f"Plot saved to '{filename}'")
     plt.show()
 
-def plot_segments(segments: list[SequenceSegment], filename: str = None) -> None:
+def plot_segments(segments: list[SequenceSegment], filename: str | None = None) -> None:
     """Display only the fitted line segments without bitmap or contour"""
     plt.figure(figsize=(10, 8))
 
