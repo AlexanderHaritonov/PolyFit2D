@@ -27,6 +27,27 @@ Thanks to precomputed cumulative moments of the sequence, fitting a line to any 
 A junction point — where one fitted segment ends and the next begins — is often an outlier to one or both segments, and in a least-squares fit an outlier at the segment's end has disproportionately large influence. A single misplaced pixel can rotate the fitted line and drag the reconstructed vertex.
 Mask2PolyMin therefore may leave up to `max_orphans_per_junction` (default=2) point(s) at each junction *orphaned* — assigned to no segment: a point is orphaned iff it lies farther than `tolerance` from both adjacent lines, and the orphans' mean then anchors the corner reconstruction.
 
+## Input conventions
+
+`FitterToPointsSequence` takes a dense, ordered contour as a float `(N, 2)` array and is agnostic to what the two columns mean: it never interprets the axes, and the returned vertices are in the same coordinate system as the input. `tolerance` is in input units.
+
+- Input **Dense contours, not sparse polygons**!
+- **Axis order doesn't matter** — `(row, col)` from skimage and `(x, y)` from OpenCV both work; output vertices keep the input's order.
+- **Closed contours**: pass `is_closed=True`; a duplicated closing point (skimage-style) is detected and stripped automatically.
+
+Notes for the two common contour sources:
+
+| | `skimage.measure.find_contours` | `cv2.findContours` |
+|---|---|---|
+| axis order | `(row, col)` | `(x, y)` |
+| coordinates | float, sub-pixel | integer pixel indices |
+| boundary semantics | between pixel centers (half-integers at `level=0.5`) | through the centers of the outermost object pixels — ~0.5 px inside the true region edge |
+| array shape | `(N, 2)` | `(N, 1, 2)` — pass `contour.reshape(-1, 2)` |
+| density | dense | dense only with `CHAIN_APPROX_NONE` |
+
+- With OpenCV, use `cv2.findContours(..., cv2.CHAIN_APPROX_NONE)`: the common `CHAIN_APPROX_SIMPLE` pre-simplifies collinear runs, starving the least-squares fits of exactly the evidence this algorithm relies on.
+- The half-pixel difference in boundary semantics is deliberate, and the fitter does not compensate — vertices come back in the input's own convention. Account for it when comparing results from different contour extractors, or against the original mask.
+
 ## Example
 
 python -m venv .venv && source .venv/bin/activate && pip install -r requirements-examples.txt && python example_usage.py
