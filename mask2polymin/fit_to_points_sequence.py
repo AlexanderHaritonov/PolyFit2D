@@ -227,6 +227,27 @@ class FitterToPointsSequence:
 
     def adjust_segmentation(self, segments: list[SequenceSegment], start_segment_index:int) -> float:
         sse_per_segment = 0
+
+        # The separation search is a pure function of the two segments' index ranges.
+        # So if a junction's state is unchanged,that scoring necessarily returned "no move" and would do so again.
+        # Remember the state and skip the re-scoring.
+        junction_last_scored_state = [None] * len(segments)
+
+        def find_optimal_break_and_adjust(junction_index, previous_segment, next_segment) -> int:
+            state = (previous_segment.first_index, previous_segment.last_index,
+                     next_segment.first_index, next_segment.last_index)
+            if junction_last_scored_state[junction_index] == state:
+                return 0
+            junction_last_scored_state[junction_index] = state
+            new_last, new_first, boundary_shift = self.best_consecutive_segments_separation(previous_segment, next_segment)
+            if boundary_shift > 0:
+                previous_segment.last_index = new_last
+                next_segment.first_index = new_first
+                refit_segment(self._moments, previous_segment)
+                refit_segment(self._moments, next_segment)
+
+            return boundary_shift
+
         for iterations_count in range(self.config.max_adjust_iterations):
             # The start segment is typically the 1st segment of the pair resulting from the split.
             # Then we do iterations of following (at most MAX_ITERATIONS)
@@ -235,31 +256,21 @@ class FitterToPointsSequence:
             #   2. adjust where the previous segment ends and the next segment starts
             #   3. re-fit both segments.
 
-            def find_optimal_break_and_adjust(previous_segment, next_segment)->int:
-                new_last, new_first, boundary_shift = self.best_consecutive_segments_separation(previous_segment, next_segment)
-                if boundary_shift > 0:
-                    previous_segment.last_index = new_last
-                    next_segment.first_index = new_first
-                    refit_segment(self._moments, previous_segment)
-                    refit_segment(self._moments, next_segment)
-
-                return boundary_shift
-
             changes_count = 0
 
             for i in range(start_segment_index, len(segments) - 1):
-                boundary_shift = find_optimal_break_and_adjust(segments[i], segments[i+1])
+                boundary_shift = find_optimal_break_and_adjust(i, segments[i], segments[i+1])
                 if boundary_shift > 1:
                     changes_count += 1
 
             reverse_run_start = start_segment_index - 1 if start_segment_index > 0 else len(segments) - 2
             for i in range(reverse_run_start, -1, -1):
-                boundary_shift = find_optimal_break_and_adjust(segments[i], segments[i+1])
+                boundary_shift = find_optimal_break_and_adjust(i, segments[i], segments[i+1])
                 if boundary_shift > 1:
                     changes_count += 1
 
             if self.is_closed:
-                boundary_shift = find_optimal_break_and_adjust(segments[-1], segments[0])
+                boundary_shift = find_optimal_break_and_adjust(len(segments) - 1, segments[-1], segments[0])
                 if boundary_shift > 1:
                     changes_count += 1
 
