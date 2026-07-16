@@ -7,10 +7,40 @@ name = "mask2polymin"
 version = "0.1.0"
 description = "Fit a polyline with a minimal number of segments to a dense contour, e.g. from bitmask segmentation outputs"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "Alexander Haritonov"}]
 requires-python = ">=3.10"
 dependencies = ["numpy"]
+keywords = [
+    "segmentation",
+    "polygon",
+    "polyline",
+    "contour",
+    "computer-vision",
+    "line-fitting",
+    "mask",
+    "simplification",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/AlexanderHaritonov/Mask2PolyMin"
+Repository = "https://github.com/AlexanderHaritonov/Mask2PolyMin"
+"Issue Tracker" = "https://github.com/AlexanderHaritonov/Mask2PolyMin/issues"
 
 [project.optional-dependencies]
 # mask2polymin.plotting imports matplotlib at module level; the core fitter does not need it
@@ -18,3 +48,6 @@ viz = ["matplotlib"]
 
 [tool.setuptools]
 packages = ["mask2polymin"]
+
+[tool.setuptools.package-data]
+mask2polymin = ["py.typed"]
