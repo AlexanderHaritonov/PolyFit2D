@@ -9,16 +9,18 @@ Produce evidence for:
 
 Secondary: compare runtime against `cv2.approxPolyDP` across contour lengths.
 
-Note: "equivalent fidelity" is not a realistic target — Mask2PolyMin least-squares-fits and smooths noise, so its Hausdorff to the *noisy input contour* reads systematically higher than RDP's. On noisy masks the reference for fidelity metrics is the **ground-truth shape**, not the input contour.
+Note: "equivalent fidelity" is not a realistic target — Mask2PolyMin least-squares-fits and smooths noise, so its Hausdorff to the *noisy input contour* reads systematically higher than RDP's. On noisy masks the reference for fidelity metrics is the **ground-truth shape**, not the input contour. For the same reason HD95 is reported alongside the max: a single spike in a noisy reference should not dictate the worst-case score.
 
 ## Metrics
 
 | Metric | Question it answers | How to compute |
 |---|---|---|
 | **Segment count** | Shape simplicity / regularity | `len(segments)` |
-| **Hausdorff distance** (symmetric, px) | Worst-case fidelity | densify both polylines, point-to-edge distances, take max |
+| **Hausdorff distance** (symmetric, px) | Worst-case fidelity | densify both polylines, pool point-to-edge distances both ways, take max |
+| **HD95** (symmetric, px) | Robust worst-case fidelity | 95th percentile of the same pooled distances — one noise spike moves the max, not this |
 | **IoU** (rasterized polygon vs. reference mask) | Area preservation | rasterize via `cv2.fillPoly`, compare bitmaps |
-| **RMS perpendicular distance** (point → polyline) | Typical fidelity | per-point min distance to edges, RMS |
+| **RMS symmetric** (px) | Typical fidelity — headline | RMS over the pooled two-directional distances (segmentation-standard, ASSD-style) |
+| **RMS directed** (reference → fit, px) | Typical fidelity — simplification-native | RMS of densified reference samples → fit edges; what RDP's ε bounds |
 | **Corner recall** | Did corners survive? | fraction of GT corners with a fitted vertex within τ = 2 px |
 | **Corner precision** | Spurious vertices? | fraction of fitted vertices within τ of a GT corner |
 | **Corner localization error** | How precisely? | mean distance GT corner → nearest fitted vertex, over matched corners |
@@ -39,8 +41,6 @@ Each algorithm runs on its native tolerance (RDP: L∞, Mask2PolyMin: L2/RMS); m
 | RDP `epsilon` (px) | 0.5 | 1.0 | 2.0 | 5.0 | 8.0 |
 |---|---|---|---|---|---|
 | Mask2PolyMin `tolerance` | 0.35 | 0.71 | 1.41 | 3.54 | 5.66 |
-
-Set `segment_tolerance = global_tolerance = min_split_improvement = tolerance`. If the metric ranges don't overlap after the first sweep, extend the schedule.
 
 ## Datasets
 
@@ -73,7 +73,7 @@ GT polygons in `gtFine/*_polygons.json`; enables comparison with Polygon-RNN++ /
 Code in [performance_test/](.). Gitignore `data/` and `results/`.
 
 ```
-metrics.py               # hausdorff, iou_rasterized, rms_distance, corner metrics   [done except corners]
+metrics.py               # hausdorff, hd95, rms_distance (sym), rms_directed, iou, corner metrics   [done]
 baselines.py             # rdp_opencv, mask2polymin wrappers + smoke test               [done]
 synth_shapes.py          # Tier 0: GT polygons + mask distortion
 fetch_coco.py            # Tier 1: download + cache
@@ -86,8 +86,10 @@ One row per (contour, algorithm, tolerance); failures are logged and skipped, no
 
 ```
 contour_id, tier, n_input_points, algorithm, tolerance, noise_level,
-n_segments, hausdorff, iou, rms_dist, corner_recall, corner_precision, corner_loc_err, wall_time_ms
+n_segments, hausdorff, hd95, iou, rms_sym, rms_dir, corner_recall, corner_precision, corner_loc_err, wall_time_ms
 ```
+
+`rms_dir` is reference → fit (the direction RDP's ε bounds); `rms_sym` ≫ `rms_dir` flags a fit that invented geometry the reference lacks (e.g. overshot corners).
 
 Aggregate median / p25 / p75 / p95 per (tier, algorithm, tolerance, noise_level) → `summary.csv`.
 
@@ -101,12 +103,12 @@ Aggregate median / p25 / p75 / p95 per (tier, algorithm, tolerance, noise_level)
 
 ## Plots
 
-1. **Segments vs. RMS (to GT)** — Tier 0, per noise level. Lower-left is better.
+1. **Segments vs. symmetric RMS (to GT)** — Tier 0, per noise level. Lower-left is better.
 2. **Corner recall vs. noise level** — Tier 0, fixed tolerance. Headline corner figure.
 3. **Segments vs. IoU** — Tier 1. Mark each algorithm's IoU noise floor (tightest tolerance); differences within the floor band are not wins.
 4. **Wall time vs. contour length** — Tier 1, single tolerance.
 
-Plus a table at the canonical tolerance (ε = 2.0 / tol = 1.41): median #segs, IoU, Hausdorff, corner recall, ms/contour.
+Plus a table at the canonical tolerance (ε = 2.0 / tol = 1.41): median #segs, IoU, Hausdorff, HD95, corner recall, ms/contour.
 
 ## Report
 

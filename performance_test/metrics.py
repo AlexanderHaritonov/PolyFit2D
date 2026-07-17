@@ -8,22 +8,39 @@ import cv2
 
 
 def hausdorff(poly_a: np.ndarray, poly_b: np.ndarray, sample_step: float = 1.0) -> float:
-    """Symmetric polyline-Hausdorff distance in pixels.
+    """Symmetric polyline-Hausdorff distance in pixels: max of the pooled boundary distances.
 
-    Treats both inputs as closed polylines (sequences of edges), not point
-    clouds: distance is point-to-edge.
-    The point-cloud
-    version (`scipy.spatial.distance.directed_hausdorff`) overestimates
+    A single outlier sample dictates the value; `hd95` is the robust companion.
+    See `_boundary_distances` for the sampling scheme.
+    """
+    return float(_boundary_distances(poly_a, poly_b, sample_step).max())
+
+
+def hd95(poly_a: np.ndarray, poly_b: np.ndarray, sample_step: float = 1.0) -> float:
+    """95th percentile of the pooled symmetric boundary distances, in pixels.
+
+    Robust Hausdorff variant, standard in the segmentation literature:
+    a single noise spike in either polyline moves the max, not this.
+    """
+    return float(np.percentile(_boundary_distances(poly_a, poly_b, sample_step), 95.0))
+
+
+def _boundary_distances(poly_a: np.ndarray, poly_b: np.ndarray, sample_step: float) -> np.ndarray:
+    """Pooled two-directional point-to-edge distances between two closed polylines.
+
+    Treats both inputs as closed polylines (sequences of edges), not point clouds:
+    distance is point-to-edge.
+    The point-cloud version (`scipy.spatial.distance.directed_hausdorff`) overestimates
     badly when one polyline is sparse and the other dense.
 
-    Both polylines are densified to ≤ `sample_step` px between samples so
-    that the B→A direction sees edge midpoints of B, not only its vertices.
+    Both polylines are densified to ≤ `sample_step` px between samples so each direction sees the other's edge midpoints, not only its vertices.
+    The A→B and B→A distances are concatenated, which weights each direction by its boundary length.
     """
     a_dense = _densify(poly_a, sample_step)
     b_dense = _densify(poly_b, sample_step)
-    h_ab = float(_point_to_polyline_distances(a_dense, poly_b).max())
-    h_ba = float(_point_to_polyline_distances(b_dense, poly_a).max())
-    return max(h_ab, h_ba)
+    d_ab = _point_to_polyline_distances(a_dense, poly_b)
+    d_ba = _point_to_polyline_distances(b_dense, poly_a)
+    return np.concatenate([d_ab, d_ba])
 
 
 def _densify(polyline: np.ndarray, max_step: float) -> np.ndarray:
@@ -79,15 +96,28 @@ def iou_rasterized(
     return float(inter) / float(union)
 
 
-def rms_distance(contour: np.ndarray, poly: np.ndarray) -> float:
-    """
-    RMS of per-point minimum perpendicular distances from contour points to
-    the closed simplified polygon's edges.
+def rms_distance(poly_a: np.ndarray, poly_b: np.ndarray, sample_step: float = 1.0) -> float:
+    """Symmetric RMS boundary distance in pixels: RMS over the pooled point-to-edge distances.
 
-    contour : (N, 2) dense input contour in (x, y)
-    poly    : (M, 2) closed polyline in (x, y); first point must equal last
+    The segmentation-evaluation standard (ASSD family).
+    Sees both failure modes: features the candidate dropped and geometry it invented.
+
+    poly_a, poly_b : (N, 2) closed polylines in (x, y); first point must equal last
     """
-    dists = _point_to_polyline_distances(contour, poly)
+    dists = _boundary_distances(poly_a, poly_b, sample_step)
+    return float(np.sqrt(np.mean(dists ** 2)))
+
+
+def rms_directed(src: np.ndarray, dst: np.ndarray, sample_step: float = 1.0) -> float:
+    """Directed RMS boundary distance in pixels: densified `src` samples → `dst` edges.
+
+    reference→fit is the curve-simplification literature's native error (what RDP's epsilon bounds).
+    It sees dropped features but is blind to invented geometry, so report it next to `rms_distance`:
+    symmetric ≫ directed flags a fit that invented geometry the reference lacks (e.g. overshot corners).
+
+    src, dst : (N, 2) closed polylines in (x, y); first point must equal last
+    """
+    dists = _point_to_polyline_distances(_densify(src, sample_step), dst)
     return float(np.sqrt(np.mean(dists ** 2)))
 
 
@@ -154,6 +184,20 @@ if __name__ == "__main__":
     assert 0.9 < h2 < 1.1, f"expected ≈1.0, got {h2}"
     print("  ✓")
 
+    # --- 1b. HD95 vs max: single 10 px spike on the 400 px square perimeter ---
+    # The spike dictates the max but contributes only ~2% of pooled samples, so hd95 ignores it.
+    spiky = np.array(
+        [[0, 0], [49, 0], [50, -10], [51, 0], [100, 0],
+         [100, 100], [0, 100], [0, 0]],
+        dtype=float,
+    )
+    h_max = hausdorff(sq, spiky)
+    h95 = hd95(sq, spiky)
+    print(f"hausdorff(sq, spiky) = {h_max:.2f}, hd95 = {h95:.2f}  (expect ≈ 10.0, ≈ 0.0)")
+    assert 9.5 < h_max < 10.5, f"expected ≈10, got {h_max}"
+    assert h95 < 1.0, f"expected hd95 ≈ 0, got {h95}"
+    print("  ✓")
+
     # --- 2. IoU: square polygon vs its own filled mask ---
     mask_sq = np.zeros((200, 200), dtype=np.uint8)
     cv2.fillPoly(mask_sq, [sq.reshape(-1, 1, 2).astype(np.int32)], 1)
@@ -169,20 +213,27 @@ if __name__ == "__main__":
     assert iou_shrunk < 0.98, f"expected < 0.98, got {iou_shrunk}"
     print("  ✓")
 
-    # --- 3. RMS distance: contour vs itself ---
+    # --- 3. RMS distances: circle vs itself, then vs its bounding square ---
     rms0 = rms_distance(circle_closed, circle_closed)
     print(f"rms_distance(circle, circle) = {rms0:.6f}  (expect 0.0)")
     assert rms0 < 1e-9, f"expected 0, got {rms0}"
     print("  ✓")
 
-    # RMS distance from dense circle to its 4-point bounding square
-    # expect roughly r*(1 - pi/4) ≈ 10.7 px  (analytical for circle→square)
+    # Circle r=50 inside its bounding square: the two directions differ
+    # (analytically ≈ 6.6 px for circle→square, ≈ 9.7 px for square→circle since the corners stick out),
+    # and the symmetric value pools their samples, landing in between.
     sq_big = np.array(
         [[100, 100], [200, 100], [200, 200], [100, 200], [100, 100]], dtype=float
     )
-    rms_circ_sq = rms_distance(circle_closed, sq_big)
-    print(f"rms_distance(circle r=50, bounding square) = {rms_circ_sq:.2f}  (expect ~5–12 px)")
-    assert 3 < rms_circ_sq < 15, f"out of expected range: {rms_circ_sq}"
+    rms_c2s = rms_directed(circle_closed, sq_big)
+    rms_s2c = rms_directed(sq_big, circle_closed)
+    rms_sym = rms_distance(circle_closed, sq_big)
+    print(f"rms_directed(circle→square) = {rms_c2s:.2f}  (expect ≈ 6.6)")
+    print(f"rms_directed(square→circle) = {rms_s2c:.2f}  (expect ≈ 9.7)")
+    print(f"rms_distance(symmetric)     = {rms_sym:.2f}  (expect between the two)")
+    assert 5.5 < rms_c2s < 7.5, f"circle→square out of range: {rms_c2s}"
+    assert 8.5 < rms_s2c < 10.5, f"square→circle out of range: {rms_s2c}"
+    assert rms_c2s < rms_sym < rms_s2c, "symmetric RMS should lie between the directed values"
     print("  ✓")
 
     # --- 4. Corner metrics ---
