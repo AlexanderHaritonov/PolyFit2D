@@ -12,11 +12,11 @@ their storage, and the distortion pipeline. Review gates are marked ⏸.
 | `hexagon` | 6 | – | obtuse 120° corners — hardest to localize precisely |
 | `star` (5-point) | 10 | 5 | acute ~45° tips — blur erodes them hardest; inner/outer radius ratio 0.45 |
 | `tab` | 8 | 2 | the union-of-two-rectangles shape from [simple_bitmap_example.py](../examples/simple_bitmap_example.py), proportions 50×60 |
-| `plane` | ~14 | yes | stylized aircraft pictogram (top view): pointed nose, swept wings, tailplane |
+| `plane` | 27 | 11 | airliner pictogram (top view), traced from an icon via the fitter itself: engines, nose arc, tailplane. Detail-rich: min spacing 0.077 unit → smallest legal size is ⌀ 128 |
 | `house` | 9 | 2 | stylized house pictogram: gable roof + door notch in the bottom edge |
 | `ship` | ~11 | yes | stylized ship pictogram: hull with pointed bow + stepped superstructure |
 | `arrow` | 7 | 2 | map direction-arrow (shaft + triangular head): acute tip, two reflex barbs where head meets shaft; strongly orientation-dependent |
-| `car` | ~14 | 4 | stylized car rear silhouette: obtuse roof shoulders + two wheel bumps below the body — small sub-features that tempt the fitter to drop them; expect the 64 px fallback |
+| `car` | 22 | 8 | stylized car rear silhouette: wide flat roof, obtuse shoulders, two door mirrors + two wheel bumps — small sub-features that tempt the fitter to drop them; takes the 64 px fallback (min spacing 0.150 unit) |
 
 Pictogram vertex coordinates are hand-authored constants in the module, defined at unit
 scale (circumscribed radius 1), mirror-symmetric where natural. Exact proportions are
@@ -28,6 +28,8 @@ radius 24) this means ≥ 0.19 unit spacing between any two vertices — pictogr
 stay coarse (no chimneys, masts, or thin funnels). The generator asserts this for every
 (shape, size). Fallback if a pictogram cannot meet it at ⌀ 48 without looking wrong:
 raise that family's small size to 64 px rather than distort the design.
+Outcome of the step-0 review: `car` takes the 64 px fallback; `plane` (traced, detail-rich)
+needs ⌀ 128 as its smallest size; the other 8 families pass at ⌀ 48.
 
 ## Dataset axes
 
@@ -129,7 +131,9 @@ contour by area) — integer pixel coordinates, exactly what a real user of the 
 feeds the fitter. Tier 0 keeps cv2 extraction; skimage subpixel contours remain Tier 1.
 
 ## Build steps
-0. create the 10 main shapes one by one and get it reviewed. store them as files.
+0. ~~create the 10 main shapes one by one and get it reviewed. store them as files.~~ —
+   **done**: all 10 families reviewed and accepted; unit-scale constants in
+   `synth_shapes.py` (`FAMILIES`), review renders in `shape_review/`.
 
 1. **GT shapes**: unit-scale family definitions, place (scale/rotate/center), rasterize,
    write the 30 stored pairs and the 3 gallery sheets per the layout above.
