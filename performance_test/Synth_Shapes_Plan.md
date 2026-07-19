@@ -12,7 +12,7 @@ their storage, and the distortion pipeline. Review gates are marked ⏸.
 | `hexagon` | 6 | – | obtuse 120° corners — hardest to localize precisely |
 | `star` (5-point) | 10 | 5 | acute ~45° tips — blur erodes them hardest; inner/outer radius ratio 0.45 |
 | `tab` | 8 | 2 | the union-of-two-rectangles shape from [simple_bitmap_example.py](../examples/simple_bitmap_example.py), proportions 50×60 |
-| `plane` | 27 | 11 | airliner pictogram (top view), traced from an icon via the fitter itself: engines, nose arc, tailplane. Detail-rich: min spacing 0.077 unit → smallest legal size is ⌀ 128 |
+| `plane` | 27 | 11 | airliner pictogram (top view), traced from an icon via the fitter itself: engines, nose arc, tailplane. Detail-rich: min spacing 0.077 unit → smallest legal size for the traced geometry is ⌀ 128; the d64 slot uses a coarsened 25-vertex variant (min spacing 0.145 unit) |
 | `house` | 9 | 2 | stylized house pictogram: gable roof + door notch in the bottom edge |
 | `ship` | ~11 | yes | stylized ship pictogram: hull with pointed bow + stepped superstructure |
 | `arrow` | 7 | 2 | map direction-arrow (shaft + triangular head): acute tip, two reflex barbs where head meets shaft; strongly orientation-dependent |
@@ -30,15 +30,19 @@ stay coarse (no chimneys, masts, or thin funnels). The generator asserts this fo
 raise that family's small size to 64 px rather than distort the design.
 Outcome of the step-0 review: `car` takes the 64 px fallback; `plane` (traced, detail-rich)
 needs ⌀ 128 as its smallest size; the other 8 families pass at ⌀ 48.
+Step-1 review amendment: plane's small slot is filled at ⌀ 64 by a coarsened 25-vertex
+variant (`SIZE_VARIANTS` in the generator) — engine pods 3 vertices instead of 4, wider
+nose flat and tail/wingtip chords; d128/d320 keep the traced geometry. Caveat this
+implies: for plane, cross-size comparisons mix a geometry change with the scale change.
 
 ## Dataset axes
 
 | Axis | Values | Count |
 |---|---|---|
 | family | see catalog | 10 |
-| size (circumscribed ⌀) | 48, 128, 320 px | 3 |
+| size (circumscribed ⌀) | 48, 128, 320 px (car and plane: 64 instead of 48) | 3 |
 | rotation | 0°, 10°, 22.5°, 37°, 45° | 5 |
-| **base GT shapes** | | **150** |
+| **base GT shapes** | 30 (family, size) cells × 5 angles | **150** |
 | noise level | 0 (clean), 1, 2 | 3 |
 | seeds per noisy level | 3 (level 0 deterministic → 1) | |
 | **distorted contours** | 150 × (1 + 2×3) | **1050** |
@@ -64,22 +68,26 @@ but never read by the pipeline. Each mask sits on a
 per-shape square canvas of `size + 2 × 24 px` margin so distortion never touches the
 border.
 
-Step 1 writes 63 files to `performance_test/gt_shapes/` (committed, unlike the
-regenerable `data/`): 30 PNG+JSON pairs (60 files) — one per family × size, **0°
-rotation only** — for close-up review, plus 3 gallery contact sheets on which all 150
-instances (including the 120 rotated variants, which get no individual files) appear as
-thumbnails:
+Step 1 writes the 30 PNG+JSON pairs (60 files) to `performance_test/gt_shapes/`
+(committed, unlike the regenerable `data/`) — one per family × size, **0° rotation
+only** — for close-up review, plus 4 gallery contact sheets to `shape_review/` — one
+per size folder, listing exactly the families stored in it — on which all 150 instances
+(including the 120 rotated variants, which get no individual files) appear as
+thumbnails, each exactly once:
 
 ```
 performance_test/gt_shapes/
   d048/
     rect_d048_a0.png   # GT mask, 0/255 (for IDE viewability; pipeline masks are {0, 1})
     rect_d048_a0.json  # GT description, schema below
-    ...                # 10 pairs per folder: one per family, 0° only
-  d128/ ...
-  d320/ ...
-  gallery_d048.png     # contact sheet: 10 families × 5 angles,
-  gallery_d128.png     #   mask + GT polygon (red) + corner dots
+    ...                # 8 pairs: one per family passing at ⌀ 48, 0° only
+  d064/ ...            # car and plane (64 px fallback; plane's d64 is the coarse variant)
+  d128/ ...            # all 10 families
+  d320/ ...            # all 10 families
+performance_test/shape_review/
+  gallery_d048.png     # contact sheets, one per size folder: its families × 5 angles,
+  gallery_d064.png     #   mask + GT polygon (red) + corner dots
+  gallery_d128.png
   gallery_d320.png
 ```
 
@@ -136,8 +144,9 @@ feeds the fitter. Tier 0 keeps cv2 extraction; skimage subpixel contours remain 
    `synth_shapes.py` (`FAMILIES`), review renders in `shape_review/`.
 
 1. **GT shapes**: unit-scale family definitions, place (scale/rotate/center), rasterize,
-   write the 30 stored pairs and the 3 gallery sheets per the layout above.
-   ⏸ **Review gate: shapes** — veto proportions, star sharpness, pictogram designs.
+   write the 30 stored pairs and the 4 gallery sheets per the layout above —
+   **implemented**, outputs in `gt_shapes/`; regeneration is byte-identical.
+   ✅ **Review gate: shapes** (closed) — proportions, star sharpness, pictogram designs approved.
 2. **Distortion + dataset iterator**: `distort(mask, level, rng)`, `extract_contour`,
    and a `dataset(reps=3)` generator (loads the canonical JSONs, applies rotations,
    rasterizes in memory; yields one record per (shape, level, rep)) as the single

@@ -1,10 +1,14 @@
 """
 Tier 0 synthetic GT shapes for the Mask2PolyMin benchmark.
 
-Step 0 (this file, in progress): hand-authored unit-scale family definitions,
-reviewed one at a time via `render_preview`. Placement (scale/rotate/center),
-rasterization, and the committed gt_shapes/ output land in step 1.
+Step 0 (done): hand-authored unit-scale family definitions, reviewed one at a time via
+`render_preview`. Step 1 (this file): placement (scale/rotate/center), subpixel
+rasterization, and the committed gt_shapes/ output — 0°-rotation PNG+JSON pairs per
+(family, size) plus per-size gallery contact sheets. Regenerating the GT files is an
+explicit action (`synth_shapes.py --write-gt`), never a side effect of a benchmark run.
 """
+import argparse
+import json
 from pathlib import Path
 
 import cv2
@@ -14,6 +18,17 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 PREVIEW_DIR = Path(__file__).parent / "shape_review"
+GT_DIR = Path(__file__).parent / "gt_shapes"
+
+MARGIN_PX = 24            # per side; distortion (step 2) must never touch the canvas border
+SIZES = (48, 128, 320)    # circumscribed diameter axis; the small slot has per-family fallbacks
+SMALL_SIZE_OVERRIDE = {"car": 64, "plane": 64}  # review outcomes (corner-spacing constraint): car per step 0, plane per step 1 via its coarse d64 variant
+ROTATIONS_DEG = (0.0, 10.0, 22.5, 37.0, 45.0)
+MIN_CORNER_SPACING_PX = 4.5  # corner_metrics matches nearest-neighbour with tau = 2 px, so GT corners must stay >= 2*tau apart
+RASTER_SHIFT = 8          # fractional bits for fixed-point cv2.fillPoly
+
+# family-specific design constants echoed into the JSON "params" field
+FAMILY_PARAMS = {"rect": {"rect_aspect": 1.8}, "star": {"star_inner_ratio": 0.45}}
 
 
 def _finalize(raw) -> np.ndarray:
@@ -25,6 +40,13 @@ def _finalize(raw) -> np.ndarray:
     verts = verts - center
     radius = np.linalg.norm(verts, axis=1).max()
     return verts / radius
+
+
+def _min_spacing(verts: np.ndarray) -> float:
+    """Smallest pairwise distance between any two vertices."""
+    dmat = np.linalg.norm(verts[:, None, :] - verts[None, :, :], axis=2)
+    np.fill_diagonal(dmat, np.inf)
+    return float(dmat.min())
 
 
 def _reflex_mask(verts: np.ndarray) -> np.ndarray:
@@ -130,6 +152,41 @@ def _plane() -> np.ndarray:
     return _finalize(raw)
 
 
+def _plane64() -> np.ndarray:
+    # coarsened variant of _plane for the d64 slot only (step-1 review decision): the traced
+    # geometry's fine detail cannot meet the 4.5 px corner floor below d128. Same silhouette,
+    # but engine pods are 3 vertices instead of 4, and the nose flat, tailplane chords and
+    # wingtip chords are widened so every vertex pair is >= 0.145 unit apart (4.64 px at d64).
+    raw = [
+        (-0.134, -0.294),  # wing leading root, left
+        (-0.264, -0.223),  # engine inner (reflex)
+        (-0.365, -0.335),  # engine front
+        (-0.440, -0.160),  # engine outer, leading edge resumes
+        (-0.953, 0.155),   # wingtip leading
+        (-0.955, 0.305),   # wingtip trailing
+        (-0.130, 0.075),   # wing trailing root (reflex)
+        (-0.091, 0.657),   # aft fuselage, left
+        (-0.360, 0.790),   # tailplane leading tip
+        (-0.380, 0.935),   # tailplane trailing tip
+        (0.000, 0.816),    # tail notch (reflex)
+        (0.380, 0.935),
+        (0.360, 0.790),
+        (0.091, 0.657),
+        (0.130, 0.075),
+        (0.955, 0.305),
+        (0.953, 0.155),
+        (0.440, -0.160),
+        (0.365, -0.335),
+        (0.264, -0.223),
+        (0.134, -0.294),
+        (0.136, -0.753),   # nose shoulder, right
+        (0.075, -0.935),   # nose flat, right
+        (-0.075, -0.935),  # nose flat, left
+        (-0.136, -0.753),  # nose shoulder, left
+    ]
+    return _finalize(raw)
+
+
 def _house() -> np.ndarray:
     # pentagon body (gable roof, no overhang) with a centered door notch in the bottom edge
     half_w = 0.5          # wall half-width
@@ -231,6 +288,149 @@ FAMILIES = {
 }
 
 
+# size-specific design variants, looked up by gt_polygon before the family default:
+# a variant fills a size slot the family's main geometry cannot legally occupy
+SIZE_VARIANTS = {("plane", 64): _plane64}
+
+
+def family_sizes(family: str) -> tuple[int, ...]:
+    """Circumscribed diameters this family is generated at; the small slot honours the
+    per-family fallbacks (car and plane: 64 instead of 48)."""
+    small = SMALL_SIZE_OVERRIDE.get(family, SIZES[0])
+    return tuple(sorted({small, *SIZES[1:]}))
+
+
+def canvas_center(canvas_px: int) -> float:
+    """Canvas centre in pixel-center coordinates: the image domain is [-0.5, N - 0.5],
+    so its midpoint is (N - 1) / 2 — a half-integer on our even canvases, which keeps
+    mirror-symmetric shapes symmetric on the pixel grid."""
+    return (canvas_px - 1) / 2.0
+
+
+def gt_polygon(family: str, size_px: int) -> tuple[np.ndarray, int]:
+    """Place a unit-scale family at 0° rotation: scale to circumscribed diameter size_px
+    and center on the square canvas of size_px + 2 * MARGIN_PX. Returns the closed
+    polygon (first == last) in float canvas pixel coords, and the canvas side length.
+    Asserts the corner-spacing constraint that corner_metrics relies on."""
+    verts = SIZE_VARIANTS.get((family, size_px), FAMILIES[family])()
+    canvas = size_px + 2 * MARGIN_PX
+    corners = verts * (size_px / 2.0) + canvas_center(canvas)
+    spacing = _min_spacing(corners)
+    assert spacing >= MIN_CORNER_SPACING_PX, (
+        f"{family} at d{size_px}: corner spacing {spacing:.2f} px < {MIN_CORNER_SPACING_PX} px"
+    )
+    return np.vstack([corners, corners[:1]]), canvas
+
+
+def rotate_polygon(poly_xy: np.ndarray, angle_deg: float, center_xy) -> np.ndarray:
+    """Rotate float polygon coordinates about a point. Rotation is always applied to the
+    polygon before rasterization — never to a rendered mask, which would corrupt the GT
+    with resampling artifacts."""
+    a = np.deg2rad(angle_deg)
+    rot = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
+    return (np.asarray(poly_xy) - center_xy) @ rot.T + center_xy
+
+
+def rasterize(poly_xy: np.ndarray, canvas_hw: tuple[int, int]) -> np.ndarray:
+    """Subpixel rasterization of a closed polygon: fixed-point cv2.fillPoly, {0, 1} uint8."""
+    mask = np.zeros(canvas_hw, dtype=np.uint8)
+    pts = np.round(np.asarray(poly_xy) * (1 << RASTER_SHIFT)).astype(np.int32)
+    cv2.fillPoly(mask, [pts.reshape(-1, 1, 2)], 1, cv2.LINE_8, RASTER_SHIFT)
+    return mask
+
+
+def _json_pairs(pts: np.ndarray) -> str:
+    """Coordinate list serialized one [x, y] pair per line, floats at full precision
+    (shortest round-trip repr), so regenerating unchanged shapes is byte-identical."""
+    lines = ",\n".join(f"    [{json.dumps(float(x))}, {json.dumps(float(y))}]" for x, y in pts)
+    return "[\n" + lines + "\n  ]"
+
+
+def _write_pair(folder: Path, family: str, size_px: int) -> None:
+    """Write one canonical GT pair: the JSON description (the pipeline's source of truth)
+    and the 0/255 PNG mask derived from it for in-repo review."""
+    polygon, canvas = gt_polygon(family, size_px)
+    shape_id = f"{family}_d{size_px:03d}_a0"
+    cv2.imwrite(str(folder / f"{shape_id}.png"), rasterize(polygon, (canvas, canvas)) * 255)
+    params = {"margin_px": MARGIN_PX, **FAMILY_PARAMS.get(family, {})}
+    if (family, size_px) in SIZE_VARIANTS:
+        params["variant"] = "coarse"
+    text = (
+        "{\n"
+        f'  "shape_id": {json.dumps(shape_id)},\n'
+        f'  "family": {json.dumps(family)},\n'
+        f'  "size_px": {size_px},\n'
+        '  "angle_deg": 0.0,\n'
+        f'  "canvas_hw": [{canvas}, {canvas}],\n'
+        f'  "polygon_xy": {_json_pairs(polygon)},\n'
+        f'  "corners_xy": {_json_pairs(polygon[:-1])},\n'
+        f'  "params": {json.dumps(params)}\n'
+        "}\n"
+    )
+    (folder / f"{shape_id}.json").write_text(text)
+    print(f"  {shape_id}: canvas {canvas}x{canvas}, "
+          f"min corner spacing {_min_spacing(polygon[:-1]):.2f} px")
+
+
+def _gallery(path: Path, rows: list[tuple[str, str, int]], title: str) -> None:
+    """Contact sheet: one row per (label, family, size_px), one column per rotation
+    angle; each cell shows the rasterized mask with GT polygon and corner dots overlaid."""
+    n_r, n_c = len(rows), len(ROTATIONS_DEG)
+    fig, axes = plt.subplots(n_r, n_c, figsize=(1.9 * n_c, 1.9 * n_r), squeeze=False)
+    for i, (label, family, size_px) in enumerate(rows):
+        base, canvas = gt_polygon(family, size_px)
+        c = canvas_center(canvas)
+        for j, angle in enumerate(ROTATIONS_DEG):
+            ax = axes[i][j]
+            poly = rotate_polygon(base, angle, (c, c))
+            ax.imshow(rasterize(poly, (canvas, canvas)), cmap="gray", vmin=0, vmax=1)
+            ax.plot(poly[:, 0], poly[:, 1], "r-", linewidth=0.7)
+            ax.scatter(poly[:-1, 0], poly[:-1, 1], c="tab:blue", s=6, zorder=3)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if i == 0:
+                ax.set_title(f"{angle:g}°", fontsize=9)
+            if j == 0:
+                ax.set_ylabel(label, fontsize=9)
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    print(f"  {path.name}: {n_r} families x {n_c} angles")
+
+
+def write_gt(out_dir: Path = GT_DIR) -> None:
+    """Write the committed canonical GT files — one PNG+JSON pair per (family, size) at 0°
+    rotation in per-size folders — plus, into shape_review/, one gallery contact sheet per
+    size slot on which every (family, size, angle) instance appears exactly once."""
+    n_pairs = 0
+    for family in FAMILIES:
+        for size_px in family_sizes(family):
+            folder = out_dir / f"d{size_px:03d}"
+            folder.mkdir(parents=True, exist_ok=True)
+            _write_pair(folder, family, size_px)
+            n_pairs += 1
+
+    # one contact sheet per size folder, listing exactly the families stored in it,
+    # so every (family, size, angle) instance appears on exactly one sheet
+    titles = {
+        48: "families passing at d048 (car and plane fall back to d064)",
+        64: "the d064 fallback families (plane: coarse variant)",
+    }
+    all_sizes = sorted({s for f in FAMILIES for s in family_sizes(f)})
+    PREVIEW_DIR.mkdir(exist_ok=True)
+    n_sheets = n_cells = 0
+    for size_px in all_sizes:
+        rows = [(f"{f} d{size_px:03d}", f, size_px)
+                for f in FAMILIES if size_px in family_sizes(f)]
+        _gallery(PREVIEW_DIR / f"gallery_d{size_px:03d}.png", rows,
+                 titles.get(size_px, f"all families at d{size_px}"))
+        n_sheets += 1
+        n_cells += len(rows) * len(ROTATIONS_DEG)
+    print(f"{n_pairs} PNG+JSON pairs -> {out_dir}\n"
+          f"{n_sheets} galleries ({n_cells} instances) -> {PREVIEW_DIR}")
+
+
 def render_preview(family: str) -> Path:
     """Rasterize a unit-scale family at a fixed review canvas: filled mask,
     GT outline, and vertex dots (reflex corners marked separately).
@@ -247,9 +447,7 @@ def render_preview(family: str) -> Path:
     mask = np.zeros((size, size), dtype=np.uint8)
     cv2.fillPoly(mask, [np.round(px).astype(np.int32).reshape(-1, 1, 2)], 1)
 
-    dmat = np.linalg.norm(verts[:, None, :] - verts[None, :, :], axis=2)
-    np.fill_diagonal(dmat, np.inf)
-    min_spacing = float(dmat.min())
+    min_spacing = _min_spacing(verts)
     bbox_unit = verts.max(axis=0) - verts.min(axis=0)
     bbox_px = bbox_unit * canvas_r
 
@@ -276,7 +474,16 @@ def render_preview(family: str) -> Path:
 
 
 if __name__ == "__main__":
-    import sys
-    names = sys.argv[1:] or list(FAMILIES)
-    for name in names:
-        render_preview(name)
+    parser = argparse.ArgumentParser(description="Tier 0 synthetic GT shape generator")
+    parser.add_argument("--write-gt", action="store_true",
+                        help="write the canonical gt_shapes/ files (PNG+JSON pairs + galleries)")
+    parser.add_argument("--preview", nargs="*", metavar="FAMILY",
+                        help="render shape_review/ previews (all families if none given)")
+    args = parser.parse_args()
+    if args.write_gt:
+        write_gt()
+    if args.preview is not None:
+        for name in args.preview or list(FAMILIES):
+            render_preview(name)
+    if not args.write_gt and args.preview is None:
+        parser.print_help()
