@@ -150,10 +150,12 @@ feeds the fitter. Tier 0 keeps cv2 extraction; skimage subpixel contours remain 
 2. **Distortion + dataset iterator**: `distort(mask, level, rng)`, `extract_contour`,
    and a `dataset(reps=3)` generator (loads the canonical JSONs, applies rotations,
    rasterizes in memory; yields one record per (shape, level, rep)) as the single
-   enumeration point for `run_benchmark.py`.
-   Render `preview_noise.png`: one shape per family × 3 levels, GT outline + extracted
-   contour overlaid. ⏸ **Review gate: noise levels** — level 2 must read as "bad
-   segmentation net", not "absurd".
+   enumeration point for `run_benchmark.py` — **implemented**: 1050 records in ~4 s,
+   per-record seeds reproduce contours bit-for-bit in isolation.
+   Rendered `shape_review/preview_noise.png`: one shape per family × 3 levels (d128,
+   22.5°, true dataset seeds), GT outline + extracted contour overlaid.
+   ⏸ **Review gate: noise levels** (open) — level 2 must read as "bad segmentation
+   net", not "absurd".
 3. Add `performance_test/data/` and `performance_test/results/` to `.gitignore`
    (`performance_test/gt_shapes/` stays committed); mark step 3 progress in
    [Perf_Test_Plan.md](Perf_Test_Plan.md).

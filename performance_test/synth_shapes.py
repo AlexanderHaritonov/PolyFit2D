@@ -2,10 +2,12 @@
 Tier 0 synthetic GT shapes for the Mask2PolyMin benchmark.
 
 Step 0 (done): hand-authored unit-scale family definitions, reviewed one at a time via
-`render_preview`. Step 1 (this file): placement (scale/rotate/center), subpixel
+`render_preview`. Step 1 (done): placement (scale/rotate/center), subpixel
 rasterization, and the committed gt_shapes/ output — 0°-rotation PNG+JSON pairs per
 (family, size) plus per-size gallery contact sheets. Regenerating the GT files is an
 explicit action (`synth_shapes.py --write-gt`), never a side effect of a benchmark run.
+Step 2 (this file): the distortion pipeline (`distort`), contour extraction, and the
+`dataset()` generator — the single enumeration point for `run_benchmark.py`.
 """
 import argparse
 import json
@@ -29,6 +31,16 @@ RASTER_SHIFT = 8          # fractional bits for fixed-point cv2.fillPoly
 
 # family-specific design constants echoed into the JSON "params" field
 FAMILY_PARAMS = {"rect": {"rect_aspect": 1.8}, "star": {"star_inner_ratio": 0.45}}
+
+# segmentation-noise levels (order of application: elastic jitter -> blur + re-threshold
+# -> boundary speckle); exact numbers are tuned at the noise-review gate
+NOISE_LEVELS = {
+    0: {"blur_sigma": 0.0, "jitter_amp": 0.0, "speckle_p": 0.0},  # clean rasterization
+    1: {"blur_sigma": 1.0, "jitter_amp": 1.0, "speckle_p": 0.0},  # decent segmentation net
+    2: {"blur_sigma": 2.0, "jitter_amp": 2.5, "speckle_p": 0.06},  # sloppy segmentation net
+}
+JITTER_CORR_LEN_PX = 8.0  # Gaussian smoothing sigma of the displacement field: wobble, not salt-and-pepper
+SPECKLE_BAND_PX = 2       # speckle flips are confined to this band around the boundary
 
 
 def _finalize(raw) -> np.ndarray:
@@ -431,6 +443,155 @@ def write_gt(out_dir: Path = GT_DIR) -> None:
           f"{n_sheets} galleries ({n_cells} instances) -> {PREVIEW_DIR}")
 
 
+def load_gt(gt_dir: Path = GT_DIR) -> list[dict]:
+    """Load the canonical GT JSONs in stable enumeration order (FAMILIES order, sizes
+    ascending) — the order the per-record seeds are derived from."""
+    records = []
+    for family in FAMILIES:
+        for size_px in family_sizes(family):
+            path = gt_dir / f"d{size_px:03d}" / f"{family}_d{size_px:03d}_a0.json"
+            rec = json.loads(path.read_text())
+            rec["polygon_xy"] = np.asarray(rec["polygon_xy"])
+            rec["corners_xy"] = np.asarray(rec["corners_xy"])
+            records.append(rec)
+    return records
+
+
+def distort(mask: np.ndarray, level: int, rng: np.random.Generator) -> np.ndarray:
+    """Simulate segmentation-net output from a clean {0, 1} mask: elastic jitter ->
+    Gaussian blur + re-threshold at 0.5 -> boundary speckle, per NOISE_LEVELS[level].
+    Deterministic given (mask, level, rng state)."""
+    p = NOISE_LEVELS[level]
+    if level == 0:
+        return mask.copy()
+    h, w = mask.shape
+    field = mask.astype(np.float32)
+    if p["jitter_amp"] > 0:
+        # two independent smooth displacement components: Gaussian-smoothed white noise,
+        # rescaled so each component's per-pixel std is exactly jitter_amp
+        disp = []
+        for _ in range(2):
+            white = rng.standard_normal((h, w)).astype(np.float32)
+            smooth = cv2.GaussianBlur(white, (0, 0), JITTER_CORR_LEN_PX)
+            disp.append(smooth * (p["jitter_amp"] / max(float(smooth.std()), 1e-9)))
+        gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+        field = cv2.remap(field, gx + disp[0], gy + disp[1], cv2.INTER_LINEAR,
+                          borderMode=cv2.BORDER_CONSTANT, borderValue=0.0)
+    if p["blur_sigma"] > 0:
+        field = cv2.GaussianBlur(field, (0, 0), p["blur_sigma"])
+    out = (field >= 0.5).astype(np.uint8)
+    if p["speckle_p"] > 0:
+        r = SPECKLE_BAND_PX
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
+        band = cv2.dilate(out, kernel) - cv2.erode(out, kernel)
+        flips = (band > 0) & (rng.random((h, w)) < p["speckle_p"])
+        out ^= flips.astype(np.uint8)
+        k3 = np.ones((3, 3), np.uint8)  # close/open makes the flipped pixels blobby, not salt-and-pepper
+        out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, k3)
+        out = cv2.morphologyEx(out, cv2.MORPH_OPEN, k3)
+    return out
+
+
+def extract_contour(mask: np.ndarray) -> np.ndarray | None:
+    """Benchmark input contour of a distorted mask: largest external contour by area
+    (cv2.findContours, CHAIN_APPROX_NONE — integer pixel coordinates, exactly what a real
+    user of the library feeds the fitter), closed float (N, 2). None if the mask is empty."""
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return None
+    pts = max(contours, key=cv2.contourArea).reshape(-1, 2).astype(np.float64)
+    return np.vstack([pts, pts[:1]])
+
+
+def _record_rng(shape_idx: int, angle_idx: int, level: int, rep: int) -> np.random.Generator:
+    """Per-record RNG seeded from the record's position on the dataset axes,
+    so any benchmark row can be regenerated in isolation."""
+    return np.random.default_rng(np.random.SeedSequence([shape_idx, angle_idx, level, rep]))
+
+
+def dataset(reps: int = 3, gt_dir: Path = GT_DIR):
+    """Yield one benchmark record per (shape, angle, noise level, rep) — the single
+    enumeration point for run_benchmark.py. Level 0 is deterministic and gets one rep;
+    default volume is 30 x 5 x (1 + 2 x reps) = 1050 records.
+
+    Record fields:
+      contour_id, family, size_px, angle_deg, noise_level, rep — identity/aggregation axes
+      gt_polygon_xy — rotated GT polygon, closed float (M, 2): reference for fidelity metrics
+      gt_corners_xy — rotated GT corners (K, 2): reference for corner_metrics
+      gt_mask       — clean {0, 1} rasterization: reference for iou_rasterized
+      contour_xy    — extracted contour of the distorted mask, closed float (N, 2):
+                      the input both algorithms are run on
+    """
+    for shape_idx, gt in enumerate(load_gt(gt_dir)):
+        canvas_hw = tuple(gt["canvas_hw"])
+        c = canvas_center(canvas_hw[0])
+        for angle_idx, angle_deg in enumerate(ROTATIONS_DEG):
+            poly = rotate_polygon(gt["polygon_xy"], angle_deg, (c, c))
+            gt_mask = rasterize(poly, canvas_hw)
+            for level in sorted(NOISE_LEVELS):
+                for rep in range(1 if level == 0 else reps):
+                    rng = _record_rng(shape_idx, angle_idx, level, rep)
+                    contour = extract_contour(distort(gt_mask, level, rng))
+                    if contour is None:  # distortion annihilated the mask; benchmark logs the gap
+                        print(f"WARNING: empty distorted mask, skipping "
+                              f"{gt['shape_id']} a{angle_deg:g} n{level} r{rep}")
+                        continue
+                    yield {
+                        "contour_id": f"{gt['family']}_d{gt['size_px']:03d}"
+                                      f"_a{angle_deg:g}_n{level}_r{rep}",
+                        "family": gt["family"],
+                        "size_px": gt["size_px"],
+                        "angle_deg": angle_deg,
+                        "noise_level": level,
+                        "rep": rep,
+                        "canvas_hw": canvas_hw,
+                        "gt_polygon_xy": poly,
+                        "gt_corners_xy": poly[:-1],
+                        "gt_mask": gt_mask,
+                        "contour_xy": contour,
+                    }
+
+
+def render_noise_preview(size_px: int = 128, angle_deg: float = 22.5) -> Path:
+    """One row per family at (size_px, angle_deg) x one column per noise level: the
+    distorted mask with the GT polygon (red) and extracted contour (cyan) overlaid.
+    Cells use the true dataset seeds (rep 0), so they show exactly what the benchmark
+    consumes for those records."""
+    angle_idx = ROTATIONS_DEG.index(angle_deg)
+    rows = [(i, gt) for i, gt in enumerate(load_gt()) if gt["size_px"] == size_px]
+    levels = sorted(NOISE_LEVELS)
+    fig, axes = plt.subplots(len(rows), len(levels),
+                             figsize=(2.2 * len(levels), 2.2 * len(rows)), squeeze=False)
+    for r, (shape_idx, gt) in enumerate(rows):
+        canvas_hw = tuple(gt["canvas_hw"])
+        c = canvas_center(canvas_hw[0])
+        poly = rotate_polygon(gt["polygon_xy"], angle_deg, (c, c))
+        gt_mask = rasterize(poly, canvas_hw)
+        for j, level in enumerate(levels):
+            ax = axes[r][j]
+            noisy = distort(gt_mask, level, _record_rng(shape_idx, angle_idx, level, 0))
+            contour = extract_contour(noisy)
+            ax.imshow(noisy, cmap="gray", vmin=0, vmax=1)
+            ax.plot(poly[:, 0], poly[:, 1], "r-", linewidth=0.8)
+            if contour is not None:
+                ax.plot(contour[:, 0], contour[:, 1], "-", color="deepskyblue", linewidth=0.6)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if r == 0:
+                ax.set_title(f"level {level}", fontsize=10)
+            if j == 0:
+                ax.set_ylabel(gt["family"], fontsize=9)
+    fig.suptitle(f"noise levels at d{size_px:03d}, {angle_deg:g}° "
+                 f"(GT red, extracted contour cyan; rep 0, true dataset seeds)", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    PREVIEW_DIR.mkdir(exist_ok=True)
+    out = PREVIEW_DIR / "preview_noise.png"
+    fig.savefig(out, dpi=110)
+    plt.close(fig)
+    print(f"wrote {out}")
+    return out
+
+
 def render_preview(family: str) -> Path:
     """Rasterize a unit-scale family at a fixed review canvas: filled mask,
     GT outline, and vertex dots (reflex corners marked separately).
@@ -479,11 +640,15 @@ if __name__ == "__main__":
                         help="write the canonical gt_shapes/ files (PNG+JSON pairs + galleries)")
     parser.add_argument("--preview", nargs="*", metavar="FAMILY",
                         help="render shape_review/ previews (all families if none given)")
+    parser.add_argument("--preview-noise", action="store_true",
+                        help="render shape_review/preview_noise.png (families x noise levels)")
     args = parser.parse_args()
     if args.write_gt:
         write_gt()
     if args.preview is not None:
         for name in args.preview or list(FAMILIES):
             render_preview(name)
-    if not args.write_gt and args.preview is None:
+    if args.preview_noise:
+        render_noise_preview()
+    if not args.write_gt and args.preview is None and not args.preview_noise:
         parser.print_help()
