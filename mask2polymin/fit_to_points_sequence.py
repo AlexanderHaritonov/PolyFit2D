@@ -18,8 +18,8 @@ MIN_POINTS_FOR_DIRECTION = 5
 # cos(~11°): merge candidates whose direction dot product falls below this diverge too much.
 COLLINEAR_DIRECTIONS_MIN_DOT = 0.98
 
-# A point's deviation must clear tolerance by this much (in squared-distance units, so 3x tolerance linear) 
-LOCAL_DEFECT_MARGIN = 9.0
+# A point's deviation must clear tolerance by this much (in squared-distance units, so 2x tolerance linear)
+LOCAL_DEFECT_MARGIN = 4.0
 
 @dataclass
 class FitterConfig:
@@ -243,9 +243,21 @@ class FitterToPointsSequence:
             return fallback.squared_distances_to_line(points)
         return core_line.squared_distances_to_line(points)
 
+    def _max_error_pivot_index(self, segment: SequenceSegment) -> int:
+        """Index of the point with the largest squared deviation from the segment's fitted line,
+        clamped so both children keep at least MIN_SEGMENT_POINTS points.
+        Splitting  exactly at the worst point resolves an off-center corner in one cut instead of many rounds of midpoint bisection."""
+        n = len(self.whole_sequence)
+        count = segment.points_count()
+        points = subsequence(self.whole_sequence, segment.first_index, segment.last_index)
+        squared_errors = segment.line_segment_params.squared_distances_to_line(points)
+        offset = int(np.argmax(squared_errors))
+        offset = min(max(offset, MIN_SEGMENT_POINTS - 1), count - 1 - MIN_SEGMENT_POINTS)
+        return (segment.first_index + offset) % n
+
     def split_segment(self, segments: list[SequenceSegment], segment_to_split_index: int) -> list[SequenceSegment]:
         segment = segments[segment_to_split_index]
-        pivot_point_index = self._lower_mid_index(segment.first_index, segment.last_index)
+        pivot_point_index = self._max_error_pivot_index(segment)
         seg2_first_index = (pivot_point_index + 1) % len(self.whole_sequence)
         segment1 = SequenceSegment(
             whole_sequence=self.whole_sequence,
