@@ -15,11 +15,18 @@ MIN_SEGMENT_POINTS = 2
 # so direction-based shortcuts must not trust it.
 MIN_POINTS_FOR_DIRECTION = 5
 
-# cos(~11°): merge candidates whose direction dot product falls below this diverge too much.
-COLLINEAR_DIRECTIONS_MIN_DOT = 0.98
+# cos(~25°): try merge segments whose direction dot product is above this.
+# they still have to pass the actual fit-quality check to merge for real
+COLLINEAR_DIRECTIONS_MIN_DOT = 0.9
 
-# A point's deviation must clear tolerance by this much (in squared-distance units).
-LOCAL_DEFECT_MARGIN = 4.5
+# A point's deviation must clear tolerance by this much (in squared-distance units) before
+# the no-improvement stop defers to it. Lower values favor recall (and, for complex shapes,
+# precision too) at the cost of wall time; 2.5 is a middle ground chosen because it's the
+# lowest value that still gives simple shapes -- this package's main target -- both better
+# precision and better wall time than removing the gate entirely, while keeping a real (if
+# partial) share of complex shapes' gain instead of giving all of it back. See
+# performance_test/Collinear_Margin_Sweep_Summary.md for the full trade-off data.
+LOCAL_DEFECT_MARGIN = 2.5
 
 # Cap on adjust_segmentation's boundary-refinement passes per split.
 MAX_ADJUST_ITERATIONS = 20
