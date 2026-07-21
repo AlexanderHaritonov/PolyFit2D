@@ -41,6 +41,10 @@ class FitterConfig:
     max_orphans_per_junction: int = 2
     verbose: bool = False
 
+    # When several segments are simultaneously eligible for the next split, rank by each segment's single worst point instead of its mean loss.
+    # Slightly improves simple shapes reconstruction, but can damage complex shapes.
+    rank_split_by_max_deviation: bool = False
+
     def __post_init__(self):
         if self.max_segments_count < 1:
             raise ValueError(f"max_segments_count must be >= 1, got {self.max_segments_count}")
@@ -213,11 +217,16 @@ class FitterToPointsSequence:
             points = subsequence(self.whole_sequence, segment.first_index, segment.last_index)
             return segment.line_segment_params.squared_distances_to_line(points).max() > self.config.tolerance_sq
 
+        def max_deviation(segment: SequenceSegment) -> float:
+            points = subsequence(self.whole_sequence, segment.first_index, segment.last_index)
+            return segment.line_segment_params.squared_distances_to_line(points).max()
+
         eligible = [i for i in range(len(segments)) if needs_split(segments[i])]
-        if eligible:
-            return max(eligible, key=lambda i: segments[i].line_segment_params.loss / segments[i].points_count())
-        else:
+        if not eligible:
             return None
+        if self.config.rank_split_by_max_deviation:
+            return max(eligible, key=lambda i: max_deviation(segments[i]))
+        return max(eligible, key=lambda i: segments[i].line_segment_params.loss / segments[i].points_count())
 
     def _lower_mid_index(self, left_index, right_index) -> int:
         """Computes middle index / pivot point, while respecting the possibility for
