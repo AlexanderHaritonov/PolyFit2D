@@ -18,10 +18,14 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+from matplotlib import gridspec
 from matplotlib import pyplot as plt
 import numpy as np
 
+from synth_shapes import family_sizes, gt_polygon
+
 RESULTS_DIR = Path(__file__).parent / "results"
+FIG_DPI = 150
 
 # categorical palette slots 1-2 (validated order) + neutral inks, light surface
 COLORS = {"mask2polymin": "#2a78d6", "rdp": "#008300"}
@@ -31,6 +35,10 @@ GRID = "#e7e5df"
 
 COMPLEX_FAMILIES = {"car", "plane", "ship"}
 SHAPE_CLASSES = ["simple", "complex"]
+
+# one low-res reference silhouette per family, shown as an icon strip above each
+# panel's "simple" / "complex" title so the class split is legible at a glance
+ICON_FAMILIES = {"simple": ("rect", "star", "arrow"), "complex": ("plane", "ship", "car")}
 
 METRIC_COLS = ["n_input_points", "n_segments", "hausdorff", "hd95", "iou", "rms_sym",
                "rms_dir", "corner_recall", "corner_precision", "corner_loc_err",
@@ -124,6 +132,96 @@ def print_medians(cells: dict) -> None:
                       f"{cols[4]:>9.2f}{cols[5]:>9.2f}{cols[6]:>9.2f}{cols[7]:>9.2f}")
 
 
+def _icon_outline(family: str) -> np.ndarray:
+    """The family's GT polygon vertices (open, no repeated closing point) at its
+    smallest legal size (d48, or the d64 fallback for car/plane) -- the true vector
+    outline, not a raster mask, so the icon stays crisp at contour scale."""
+    size_px = family_sizes(family)[0]
+    poly, _canvas = gt_polygon(family, size_px)
+    return poly[:-1]
+
+
+def _bare_axes(iax) -> None:
+    iax.set_xticks([])
+    iax.set_yticks([])
+    for side in iax.spines.values():
+        side.set_visible(False)
+
+
+def _icon_layout(x0: float, icon_h: float, shape_class: str) -> tuple[list, float]:
+    """One entry per family (family, x, icon_w, px0, px1, py0, py1), plus for "simple"
+    a trailing ("dots", x, dots_w) slot, left-aligned from x0 at the given icon height
+    -- every width here scales linearly with icon_h, which _fit_icon_h relies on.
+    Returns (entries, total width)."""
+    gap = icon_h * 0.04
+    entries, x = [], x0
+    for family in ICON_FAMILIES[shape_class]:
+        verts = _icon_outline(family)
+        vx, vy = verts[:, 0], verts[:, 1]
+        pad = 0.12 * max(vx.max() - vx.min(), vy.max() - vy.min())
+        px0, px1 = vx.min() - pad, vx.max() + pad
+        py0, py1 = vy.min() - pad, vy.max() + pad
+        icon_w = icon_h * (px1 - px0) / (py1 - py0)
+        entries.append((family, x, icon_w, px0, px1, py0, py1))
+        x += icon_w + gap
+    if shape_class == "simple":
+        dots_w = icon_h * 0.5
+        entries.append(("dots", x, dots_w))
+        x += dots_w
+    return entries, x - gap
+
+
+def _fit_icon_h(bbox_width: float, shape_class: str, max_icon_h: float) -> float:
+    """The largest icon height that still fits shape_class's row into bbox_width,
+    capped at max_icon_h. Widths in _icon_layout scale linearly with icon_h, so one
+    probe at icon_h=1.0 gives the width-per-unit-height needed to solve for it."""
+    _, unit_w = _icon_layout(0.0, 1.0, shape_class)
+    return min(max_icon_h, bbox_width / unit_w * 0.98)
+
+
+def _draw_icon_row(fig, spec, shape_class: str, icon_h: float) -> None:
+    """Render shape_class's reference silhouettes as outlines only (no fill),
+    left-aligned, at the given icon height (shared with the other class's row, via
+    _fit_icon_h, so "simple" and "complex" icons render at the same size) and a small
+    fixed gap, directly above where that column's "simple" / "complex" title will
+    sit. "simple" gets a trailing 3-dot icon: only 3 of its 7 families are shown,
+    while "complex" shows all 3 of its member families."""
+    bbox = spec.get_position(fig)
+    ax_y0 = bbox.y0 + (bbox.height - icon_h) / 2
+    entries, _ = _icon_layout(bbox.x0, icon_h, shape_class)
+
+    for entry in entries:
+        if entry[0] == "dots":
+            _, x, dots_w = entry
+            dax = fig.add_axes((x, ax_y0, dots_w, icon_h))
+            dax.set_xlim(0, 1)
+            dax.set_ylim(0, 1)
+            dot_y = 0.12 + 2.0 / (icon_h * fig.get_size_inches()[1] * FIG_DPI)
+            dax.scatter([0.2, 0.5, 0.8], [dot_y] * 3, s=10, color=INK)
+            _bare_axes(dax)
+        else:
+            family, x, icon_w, px0, px1, py0, py1 = entry
+            iax = fig.add_axes((x, ax_y0, icon_w, icon_h))
+            iax.add_patch(plt.Polygon(_icon_outline(family), closed=True, fill=False,
+                                       edgecolor=INK, linewidth=1.3))
+            iax.set_xlim(px0, px1)
+            iax.set_ylim(py1, py0)  # inverted: polygon y grows downward (image convention)
+            _bare_axes(iax)
+
+
+def _draw_icon_rows(fig, outer) -> None:
+    """Draw both classes' icon rows (outer[0, 0] and outer[0, 1]) at one shared icon
+    height, so "simple" (which fits comfortably) doesn't render larger than "complex"
+    (whose wider ship/car outlines force a smaller fit)."""
+    specs = [outer[0, col] for col in range(2)]
+    bboxes = [spec.get_position(fig) for spec in specs]
+    max_icon_h = min(bbox.height for bbox in bboxes) * 0.95
+    icon_h = min(_fit_icon_h(bbox.width, sc, max_icon_h)
+                 for bbox, sc in zip(bboxes, SHAPE_CLASSES)) * 0.65
+    for spec, shape_class in zip(specs, SHAPE_CLASSES):
+        _draw_icon_row(fig, spec, shape_class, icon_h)
+
+
 def _style(ax) -> None:
     ax.grid(True, color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
@@ -140,8 +238,18 @@ def fig_segments_vs_rms(cells, out_path: Path, tier: int = 0) -> None:
     noise-matched tolerance, connected noise level 0 -> 4 per algorithm. Lower-left is
     better."""
     levels = sorted({k[2] for k in cells if k[0] == tier})
-    fig, axes = plt.subplots(1, 2, figsize=(9.4, 4.8), sharey=True)
-    for ax, shape_class in zip(axes, SHAPE_CLASSES):
+    fig = plt.figure(figsize=(9.4, 6.1))
+    outer = gridspec.GridSpec(2, 2, figure=fig, height_ratios=(1, 5), hspace=0.12)
+    # set final margins before reading any cell's get_position() (icons included) --
+    # tight_layout doesn't account for the nested icon gridspecs or the fig.text
+    # footnotes below the axes, so margins are set by hand instead, up front, so
+    # every position query below reflects the real layout, not matplotlib's defaults.
+    outer.update(left=0.08, right=0.98, top=0.925, bottom=0.15)
+    _draw_icon_rows(fig, outer)
+    axes = []
+    for col, shape_class in enumerate(SHAPE_CLASSES):
+        ax = fig.add_subplot(outer[1, col], sharey=axes[0] if axes else None)
+        axes.append(ax)
         for algo in ("rdp", "mask2polymin"):
             keys = [(tier, algo, level, shape_class) for level in levels]
             xs = [_agg(cells[k]["n_segments"], "median") for k in keys]
@@ -161,13 +269,12 @@ def fig_segments_vs_rms(cells, out_path: Path, tier: int = 0) -> None:
                       fontsize=8, color=INK_2, style="italic", ha="right")
     fig.suptitle("segment count vs fidelity, at each noise level's matched tolerance",
                  fontsize=11, color=INK)
-    fig.text(0.5, 0.045,
+    fig.text(0.5, 0.06,
              "tolerance = max(1.0, jitter_amp), ε = tolerance·√2 (README `Parameters`)",
              ha="center", fontsize=8, color=INK_2)
-    fig.text(0.5, 0.01, "labels n0-n4 = noise level; each point is a median",
+    fig.text(0.5, 0.018, "labels n0-n4 = noise level; each point is a median",
              ha="center", fontsize=8, color=INK_2)
-    fig.tight_layout(rect=(0, 0.10, 1, 0.90))
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=FIG_DPI)
     plt.close(fig)
     print(f"figure -> {out_path}")
 
@@ -176,11 +283,23 @@ def fig_corner_recall(cells, out_path: Path, tier: int = 0) -> None:
     """Plan plot 2: median corner recall and precision vs noise level, each level at its
     own noise-matched tolerance -- one row per metric, one column per shape class."""
     levels = sorted({k[2] for k in cells if k[0] == tier})
-    fig, axes = plt.subplots(2, 2, figsize=(9.4, 6.8), sharey=True, sharex=True)
+    fig = plt.figure(figsize=(9.4, 8.0))
+    outer = gridspec.GridSpec(2, 2, figure=fig, height_ratios=(1, 9), hspace=0.12)
+    plot_cols = [gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer[1, col], hspace=0.12)
+                 for col in range(2)]
+    # set final margins before reading any cell's get_position() (icons included) --
+    # tight_layout doesn't account for the nested icon/plot gridspecs, so margins are
+    # set by hand instead, up front, so every position query below reflects the real
+    # layout, not matplotlib's defaults.
+    outer.update(left=0.08, right=0.98, top=0.95, bottom=0.07)
+    _draw_icon_rows(fig, outer)
+    axes = [[None, None], [None, None]]
     for row, (metric, title) in enumerate(
             [("corner_recall", "corner recall"), ("corner_precision", "corner precision")]):
         for col, shape_class in enumerate(SHAPE_CLASSES):
-            ax = axes[row][col]
+            share_with = axes[0][0]
+            ax = fig.add_subplot(plot_cols[col][row, 0], sharey=share_with, sharex=share_with)
+            axes[row][col] = ax
             for algo in ("rdp", "mask2polymin"):
                 keys = [(tier, algo, level, shape_class) for level in levels]
                 med = [_agg(cells[k][metric], "median") for k in keys]
@@ -198,8 +317,7 @@ def fig_corner_recall(cells, out_path: Path, tier: int = 0) -> None:
     axes[0][0].legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower left")
     fig.suptitle("corner survival vs noise, each level at its noise-matched tolerance "
                  "(τ = 2 px)", fontsize=11, color=INK)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=FIG_DPI)
     plt.close(fig)
     print(f"figure -> {out_path}")
 
