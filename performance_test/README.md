@@ -60,7 +60,9 @@ and renders `results/charts/`:
 [fig8_perimeter.png](results/charts/fig8_perimeter.png),
 [fig9_iou.png](results/charts/fig9_iou.png),
 [fig10_corner_angle.png](results/charts/fig10_corner_angle.png)
--- each split simple vs. complex (car/plane/ship) shapes.
+-- each split simple vs. complex (car/plane/ship) shapes -- plus
+[fig11_walltime.png](results/charts/fig11_walltime.png) (median wall time vs noise, log scale)
+and `results/runtime_summary.csv` (mean/p95 wall time per algorithm, pooled and per image size).
 
 ## Metrics
 

@@ -281,14 +281,19 @@ def fig_segments_vs_rms(cells, out_path: Path, tier: int = 0) -> None:
 
 def fig_metrics_vs_noise(cells, metrics, suptitle: str, out_path: Path,
                           tier: int = 0, share_y_across_rows: bool = False,
-                          legend_loc: str = "best", note: str | None = None) -> None:
+                          legend_loc: str = "best", note: str | None = None,
+                          log_y: bool = False,
+                          algos: tuple = ("rdp", "mask2polymin")) -> None:
     """1 or 2 metrics (one per row) vs noise level, each level at its own noise-matched
     tolerance -- one column per shape class. metrics is a list of 1 or 2
     (metric_col, ylabel, ylim) tuples: ylim is an explicit (lo, hi); "floor0" to
     autoscale the top but pin the bottom at 0; "auto" to autoscale both ends freely
     (for ratio metrics like area_ratio that hover near 1 -- flooring at 0 would flatten
     all their variation into a sliver at the top); or None, which also autoscales both
-    ends but adds a dashed 0 reference line (for signed metrics like corner_bias)."""
+    ends but adds a dashed 0 reference line (for signed metrics like corner_bias).
+    log_y logs every row's y-axis (for metrics like wall_time_ms spanning orders of
+    magnitude between algorithms); ylim should be "auto" when log_y is set, since
+    "floor0"/None both assume a linear, zero-anchored axis."""
     nrows = len(metrics)
     levels = sorted({k[2] for k in cells if k[0] == tier})
     if nrows == 1:
@@ -317,13 +322,15 @@ def fig_metrics_vs_noise(cells, metrics, suptitle: str, out_path: Path,
             x_anchor = x_anchor or ax
             row_anchor[row] = row_anchor[row] or ax
             axes[row][col] = ax
-            for algo in ("rdp", "mask2polymin"):
+            for algo in algos:
                 keys = [(tier, algo, level, shape_class) for level in levels]
                 med = [_agg(cells[k][metric], "median") for k in keys]
                 ax.plot(levels, med, "-o", color=COLORS[algo], linewidth=2, markersize=6,
                         label=SERIES_LABEL[algo])
                 row_max = max(row_max, max(med))
             ax.set_xticks(levels)
+            if log_y:
+                ax.set_yscale("log")
             if ylim not in (None, "floor0", "auto"):
                 ax.set_ylim(*ylim)
             elif ylim is None:
@@ -451,6 +458,12 @@ def main() -> None:
     fig_corner_recall(cells, out / "fig2_corner_recall.png")
     for filename, metrics, suptitle, note in FIDELITY_CHARTS:
         fig_metrics_vs_noise(cells, metrics, suptitle, out / filename, note=note)
+    fig_metrics_vs_noise(
+        cells, [("wall_time_ms", "median wall time (ms, log scale)", "auto")],
+        "Mask2PolyMin wall-clock time vs noise, each level at its noise-matched tolerance",
+        out / "fig11_walltime.png",
+        note="Intel i5-12450H, Intel UHD Graphics, single contour, single-threaded CPU fit",
+        log_y=True, algos=("mask2polymin",))
 
 
 if __name__ == "__main__":
