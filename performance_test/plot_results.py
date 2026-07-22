@@ -279,9 +279,16 @@ def fig_segments_vs_rms(cells, out_path: Path, tier: int = 0) -> None:
     print(f"figure -> {out_path}")
 
 
-def fig_corner_recall(cells, out_path: Path, tier: int = 0) -> None:
-    """Plan plot 2: median corner recall and precision vs noise level, each level at its
-    own noise-matched tolerance -- one row per metric, one column per shape class."""
+def fig_two_metrics_vs_noise(cells, metrics, suptitle: str, out_path: Path,
+                              tier: int = 0, share_y_across_rows: bool = False,
+                              legend_loc: str = "best") -> None:
+    """Two metrics (one per row) vs noise level, each level at its own noise-matched
+    tolerance -- one column per shape class. metrics is a list of 2
+    (metric_col, ylabel, ylim) tuples: ylim is an explicit (lo, hi); "floor0" to
+    autoscale the top but pin the bottom at 0; "auto" to autoscale both ends freely
+    (for ratio metrics like area_ratio that hover near 1 -- flooring at 0 would flatten
+    all their variation into a sliver at the top); or None, which also autoscales both
+    ends but adds a dashed 0 reference line (for signed metrics like corner_bias)."""
     levels = sorted({k[2] for k in cells if k[0] == tier})
     fig = plt.figure(figsize=(9.4, 8.0))
     outer = gridspec.GridSpec(2, 2, figure=fig, height_ratios=(1, 9), hspace=0.12)
@@ -294,32 +301,84 @@ def fig_corner_recall(cells, out_path: Path, tier: int = 0) -> None:
     outer.update(left=0.08, right=0.98, top=0.95, bottom=0.07)
     _draw_icon_rows(fig, outer)
     axes = [[None, None], [None, None]]
-    for row, (metric, title) in enumerate(
-            [("corner_recall", "corner recall"), ("corner_precision", "corner precision")]):
+    x_anchor, row_anchor = None, [None, None]
+    for row, (metric, ylabel, ylim) in enumerate(metrics):
+        row_max = 0.0
         for col, shape_class in enumerate(SHAPE_CLASSES):
-            share_with = axes[0][0]
-            ax = fig.add_subplot(plot_cols[col][row, 0], sharey=share_with, sharex=share_with)
+            sharey = axes[0][0] if share_y_across_rows else row_anchor[row]
+            ax = fig.add_subplot(plot_cols[col][row, 0], sharey=sharey, sharex=x_anchor)
+            x_anchor = x_anchor or ax
+            row_anchor[row] = row_anchor[row] or ax
             axes[row][col] = ax
             for algo in ("rdp", "mask2polymin"):
                 keys = [(tier, algo, level, shape_class) for level in levels]
                 med = [_agg(cells[k][metric], "median") for k in keys]
                 ax.plot(levels, med, "-o", color=COLORS[algo], linewidth=2, markersize=6,
                         label=SERIES_LABEL[algo])
+                row_max = max(row_max, max(med))
             ax.set_xticks(levels)
-            ax.set_ylim(0, 1.05)
+            if ylim not in (None, "floor0", "auto"):
+                ax.set_ylim(*ylim)
+            elif ylim is None:
+                ax.axhline(0, color=INK_2, linewidth=0.8, linestyle="--", zorder=0)
             if row == 0:
                 ax.set_title(shape_class, fontsize=10.5, color=INK, fontweight="bold")
             if col == 0:
-                ax.set_ylabel(f"median {title}", fontsize=9, color=INK_2)
+                ax.set_ylabel(ylabel, fontsize=9, color=INK_2)
             if row == 1:
                 ax.set_xlabel("noise level", fontsize=9, color=INK_2)
             _style(ax)
-    axes[0][0].legend(frameon=False, fontsize=9, labelcolor=INK, loc="lower left")
-    fig.suptitle("corner survival vs noise, each level at its noise-matched tolerance "
-                 "(τ = 2 px)", fontsize=11, color=INK)
+        if ylim == "floor0":
+            # sharey + a partial set_ylim(bottom=...) on each axes in turn races with
+            # matplotlib's own autoscale (whichever axes sets it last wins, and it may
+            # not have seen the other column's data yet) -- set both ends from the
+            # actual row data instead, once, after both columns are plotted.
+            row_anchor[row].set_ylim(0, row_max * 1.05 if row_max > 0 else 1.0)
+    axes[0][0].legend(frameon=False, fontsize=9, labelcolor=INK, loc=legend_loc)
+    fig.suptitle(suptitle, fontsize=11, color=INK)
     fig.savefig(out_path, dpi=FIG_DPI)
     plt.close(fig)
     print(f"figure -> {out_path}")
+
+
+def fig_corner_recall(cells, out_path: Path, tier: int = 0) -> None:
+    """Plan plot 2: median corner recall and precision vs noise level."""
+    fig_two_metrics_vs_noise(
+        cells,
+        [("corner_recall", "median corner recall", (0, 1.05)),
+         ("corner_precision", "median corner precision", (0, 1.05))],
+        "corner survival vs noise, each level at its noise-matched tolerance (τ = 2 px)",
+        out_path, tier=tier, share_y_across_rows=True, legend_loc="lower left")
+
+
+# additional fidelity metrics, paired two-per-figure in the same simple/complex,
+# icon-strip style as fig1/fig2 -- ylim "floor0" autoscales the top but pins the
+# bottom at 0; None autoscales freely and draws a dashed 0 reference line (corner_bias
+# is signed: positive = corner-cutting, negative = overshoot)
+FIDELITY_PAIRS = [
+    ("fig3_hausdorff.png",
+     [("hausdorff", "median Hausdorff (px)", "floor0"),
+      ("hd95", "median HD95 (px)", "floor0")],
+     "boundary distance vs noise, each level at its noise-matched tolerance"),
+    ("fig4_rms.png",
+     [("rms_sym", "median symmetric RMS (px)", "floor0"),
+      ("rms_dir", "median directed RMS (px)", "floor0")],
+     "RMS boundary error vs noise, each level at its noise-matched tolerance"),
+    ("fig5_corner_position.png",
+     [("corner_loc_err", "median corner loc. error (px)", "floor0"),
+      ("corner_bias", "median corner bias (px)", None)],
+     "corner positional error vs noise, each level at its noise-matched tolerance "
+     "(τ = 2 px)"),
+    ("fig6_area_perimeter.png",
+     [("area_ratio", "median area ratio", "auto"),
+      ("perimeter_ratio", "median perimeter ratio", "auto")],
+     "area / perimeter ratio vs noise, each level at its noise-matched tolerance"),
+    ("fig7_iou_angle.png",
+     [("iou", "median IoU", "auto"),
+      ("corner_angle_err", "median corner angle error (deg)", "floor0")],
+     "IoU and corner turning-angle error vs noise, each level at its noise-matched "
+     "tolerance"),
+]
 
 
 def runtime_summary(cells: dict) -> list[dict]:
@@ -372,6 +431,8 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     fig_segments_vs_rms(cells, out / "fig1_segments_vs_rms.png")
     fig_corner_recall(cells, out / "fig2_corner_recall.png")
+    for filename, metrics, suptitle in FIDELITY_PAIRS:
+        fig_two_metrics_vs_noise(cells, metrics, suptitle, out / filename)
 
 
 if __name__ == "__main__":
