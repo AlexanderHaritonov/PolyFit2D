@@ -1,0 +1,2 @@
+prune test
+prune mask2polymin.egg-info
