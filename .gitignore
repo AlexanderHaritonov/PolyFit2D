@@ -73,3 +73,4 @@ coverage.xml
 performance_test/data/
 performance_test/summarized_csvs/raw.csv
 performance_test/summarized_csvs/corner_angle_observations.csv
+performance_test/summarized_csvs/defect_margin_ab_raw.csv

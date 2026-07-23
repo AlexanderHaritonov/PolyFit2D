@@ -8,50 +8,50 @@ from mask2polymin.sequence_segment import SequenceSegment, points_count
 
 PLOT_SEGMENTS = False
 
-# Hard floor for a line fit; orphaning never squeezes a segment below it.
+''' Hard floor for a line fit; orphaning never squeezes a segment below it. '''
 MIN_SEGMENT_POINTS = 2
 
-# Below this many points a fitted direction is noise-dominated,
-# so direction-based shortcuts must not trust it.
+''' Below this many points a fitted direction is noise-dominated,
+so direction-based shortcuts must not trust it. '''
 MIN_POINTS_FOR_DIRECTION = 5
 
-# cos(~25°): try merge segments whose direction dot product is above this.
-# they still have to pass the actual fit-quality check to merge for real
+''' cos(~25°): try merge segments whose direction dot product is above this.
+they still have to pass the actual fit-quality check to merge for real '''
 COLLINEAR_DIRECTIONS_MIN_DOT = 0.9
 
-# A point's deviation must clear tolerance by this much (in squared-distance units) before
-# the no-improvement stop defers to it. Lower values favor recall (and, for complex shapes,
-# precision too) at the cost of wall time; 2.5 is a middle ground chosen because it's the
-# lowest value that still gives simple shapes -- this package's main target -- both better
-# precision and better wall time than removing the gate entirely, while keeping a real (if
-# partial) share of complex shapes' gain instead of giving all of it back. See
-# performance_test/Collinear_Margin_Sweep_Summary.md for the full trade-off data.
+''' A point's deviation must clear tolerance by this much (in squared-distance units) before  the no-improvement stop defers to it.
+Lower values favor recall (and, for complex shapes, precision too) at the cost of wall time. '''
 LOCAL_DEFECT_MARGIN = 2.5
 
-# Cap on adjust_segmentation's boundary-refinement passes per split.
+''' Cap on adjust_segmentation's boundary-refinement passes per split. '''
 MAX_ADJUST_ITERATIONS = 20
 
-# Max points per junction that may be left orphaned (assigned to no segment);
-# orphaning is data-driven: a point is orphaned iff farther than tolerance from both adjacent lines.
+''' Max points per junction that may be left orphaned (assigned to no segment);
+orphaning is data-driven: a point is orphaned iff farther than tolerance from both adjacent lines. '''
 MAX_ORPHANS_PER_JUNCTION = 2
 
 @dataclass
 class FitterConfig:
     max_segments_count: int = 18
 
-    # Max allowed deviation in pixels (perpendicular distance to the fitted line).
+    ''' Max allowed deviation in pixels (perpendicular distance to the fitted line).
+    Rule of thumb: tolerance ≈ max(1.0, jitter_amp), where `jitter_amp` how noisy the segmentation is 
+    - the standard deviation of how far the mask's boundary randomly wanders from its true edge.
+    The 1.0 floor covers ordinary pixel-quantization jitter present even in a "clean" mask. '''
     # tolerance_sq gates everything:
     #   - split eligibility and collinear merge: a segment's mean and max squared point distance must stay within it;
     #   - global stop: the average SSE per segment must stay within it, i.e. each segment gets a budget of ~one tolerance-sized outlier;
     #   - improvement: each split must reduce that SSE by at least one  outlier's worth, else the fitter gives up.
-    # Rule of thumb: tolerance ≈ max(1.0, jitter_amp), where `jitter_amp` how noisy the segmentation is 
-    # - the standard deviation of how far the mask's boundary randomly wanders from its true edge.
-    # The 1.0 floor covers ordinary pixel-quantization jitter present even in a "clean" mask.
+    #
     tolerance: float = 1.0
 
-    # When several segments are simultaneously eligible for the next split, rank by each segment's single worst point instead of its mean loss.
-    # Slightly improves simple shapes reconstruction, but can damage complex shapes.
+    ''' When several segments are simultaneously eligible for the next split, rank by each segment's single worst point instead of its mean loss.
+    Slightly improves simple shapes reconstruction, but can damage complex shapes. '''
     rank_split_by_max_deviation: bool = False
+
+    ''' Set this to False to speed up the algorithm by ~30% on complex shapes (~45% on simple)
+    at the cost of an ~11% corner-recall regression on complex shapes -- simple-shape recall is essentially unaffected, and its precision actually improves. Measured via performance_test/defect_margin_ab.py. '''
+    apply_local_defect_margin: bool = True
 
     verbose: bool = False
 
@@ -152,8 +152,11 @@ class FitterToPointsSequence:
             sse_per_segment = new_sse_per_segment
 
     def _has_severe_local_defect(self, segments: list[SequenceSegment]) -> bool:
-        """Whether any segment has a point deviating enough to be a real unresolved feature
-        rather than pixel-quantization jitter (see LOCAL_DEFECT_MARGIN)."""
+        """Whether any segment has a point deviating enough to be a real unresolved feature rather than pixel-quantization jitter (see LOCAL_DEFECT_MARGIN)."""
+
+        if not self.config.apply_local_defect_margin:
+            return False
+        
         threshold = LOCAL_DEFECT_MARGIN * self.config.tolerance_sq
         for segment in segments:
             if segment.points_count() <= 3:
